@@ -136,6 +136,11 @@ class HybridIndex:
     ) -> list[RetrievedChunk]:
         if not self.chunks:
             return []
+        # A blank/whitespace query has nothing to match and produces a zero
+        # embedding vector — newer langchain-core raises on that in the in-memory
+        # store's cosine path, so short-circuit here (contract: return no results).
+        if not query or not query.strip():
+            return []
         retriever = self._build_retriever(top_k, candidate_k, rerank)
         docs = retriever.invoke(query)
 
