@@ -37,3 +37,9 @@ models/
 Thumbs.db
 .vscode/
 .idea/
+
+# coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

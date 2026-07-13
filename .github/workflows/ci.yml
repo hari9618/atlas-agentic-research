@@ -31,6 +31,7 @@ jobs:
       - name: Tests (offline — no network, no API keys)
         env:
           ATLAS_OFFLINE_EMBED: "1"
+          ATLAS_OFFLINE_LLM: "1"
         run: python -m pytest -q --cov=atlas --cov-report=term-missing
 
   # Web build is added in M5, once apps/web exists.
