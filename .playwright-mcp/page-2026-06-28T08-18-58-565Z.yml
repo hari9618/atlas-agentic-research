@@ -1,0 +1,73 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - heading "Atlas · Due-Diligence War Room" [level=1] [ref=e4]
+      - paragraph [ref=e5]: A team of AI agents researches, debates bull vs bear, and writes a cited brief — live.
+    - generic [ref=e6]:
+      - textbox "Ask about a company or market…" [ref=e7]: Evaluate Helios Robotics as a competitor
+      - button "Researching…" [disabled] [ref=e92]
+    - generic [ref=e9]:
+      - button "Evaluate Helios Robotics as a competitor" [ref=e10]
+      - button "What are Helios Robotics' biggest risks?" [ref=e11]
+      - button "Compare Helios Robotics and Aster Dynamics" [ref=e12]
+    - generic [ref=e13]:
+      - heading "Agent pipeline" [level=2] [ref=e14]
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: Plan
+            - generic [ref=e20]:
+              - generic [ref=e21]: Supervisor
+              - generic [ref=e22]: ●
+          - generic [ref=e23]: →
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e26]: Specialists
+            - generic [ref=e28]:
+              - generic [ref=e29]: Fundamentals
+              - generic [ref=e30]: ○
+            - generic [ref=e32]:
+              - generic [ref=e33]: News & Sentiment
+              - generic [ref=e34]: ○
+            - generic [ref=e36]:
+              - generic [ref=e37]: Risk
+              - generic [ref=e38]: ○
+            - generic [ref=e40]:
+              - generic [ref=e41]: Market / Competitor
+              - generic [ref=e42]: ○
+          - generic [ref=e43]: →
+        - generic [ref=e44]:
+          - generic [ref=e45]:
+            - generic [ref=e46]: Debate
+            - generic [ref=e48]:
+              - generic [ref=e49]: Bull vs Bear
+              - generic [ref=e50]: ○
+          - generic [ref=e51]: →
+        - generic [ref=e53]:
+          - generic [ref=e54]: Synthesize
+          - generic [ref=e56]:
+            - generic [ref=e57]: Synthesizer
+            - generic [ref=e58]: ○
+    - generic [ref=e59]:
+      - generic [ref=e60]:
+        - generic [ref=e61]:
+          - heading "Synthesized brief" [level=2] [ref=e62]
+          - paragraph [ref=e63]: The synthesized brief will render here…
+        - generic [ref=e64]:
+          - heading "Bull vs Bear debate" [level=2] [ref=e65]
+          - paragraph [ref=e66]: The debate transcript will stream here…
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - heading "Verdict confidence" [level=2] [ref=e69]
+          - generic [ref=e71]:
+            - img [ref=e72]
+            - generic [ref=e75]:
+              - generic [ref=e76]: —
+              - generic [ref=e77]: confidence
+        - generic [ref=e78]:
+          - heading "Findings" [level=2] [ref=e79]
+          - paragraph [ref=e80]: Specialist findings will appear here…
+    - generic [ref=e81]: Groq Llama 3.3 70B · LangGraph · Hybrid RAG · traced in Langfuse
+  - button "Open Next.js Dev Tools" [ref=e87] [cursor=pointer]:
+    - img [ref=e88]
+  - alert [ref=e91]

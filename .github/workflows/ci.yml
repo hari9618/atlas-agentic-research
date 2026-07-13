@@ -1,0 +1,40 @@
+name: Atlas CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend — lint + tests (offline)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (editable + dev)
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: python -m ruff check atlas
+
+      - name: Tests (offline — no network, no API keys)
+        env:
+          ATLAS_OFFLINE_EMBED: "1"
+        run: python -m pytest -q --cov=atlas --cov-report=term-missing
+
+  # Web build is added in M5, once apps/web exists.
+  # web:
+  #   name: Frontend — lint + build
+  #   runs-on: ubuntu-latest
+  #   ...

@@ -1,0 +1,39 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---- Data / models / vector store ----
+# Ignore ingested user documents, but KEEP the tracked sample corpus (*.md) that
+# the tests and demo depend on.
+data/corpus/*
+!data/corpus/.gitkeep
+!data/corpus/*.md
+data/cache/
+*.faiss
+models/
+
+# ---- Docker / local infra volumes ----
+.qdrant_storage/
+.langfuse_db/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
