@@ -35,9 +35,13 @@ Ask Atlas a question like _"Should I worry about Company X as a competitor?"_ an
 |---|---|
 | 🧠 **True multi-agent orchestration** | Not a prompt chain — a real **LangGraph** graph with a supervisor, parallel specialists, a debate loop, and shared **SQLite-checkpointed** state that can resume after a crash. |
 | 🔍 **Agentic hybrid RAG** | **BM25 + bge dense** embeddings fused with **RRF**, a **cross-encoder re-ranker**, and a **CRAG** self-correction loop that re-searches when evidence is weak. |
+| 🌐 **Hybrid evidence** | CRAG's three-way grade decides the source: curated documents when they answer, **documents + live web combined** when partial, web alone when they don't. Web hits become the same citable chunk type, so provenance works identically either way. |
 | 🛠️ **MCP tool server** | Agents pull live evidence via **web search (Tavily) · SEC EDGAR · stock data · company news** — each tool degrades gracefully on failure. |
 | 🗂️ **Four memory layers** | **Working** (graph state) · **Semantic** (RAG) · **Episodic** (SQLite + vectors of past runs) · **Procedural** (playbooks) — plus a **Summarizer agent** that distills old runs into durable facts. |
 | 📈 **Self-improving LLM-Ops** | Every run is auto-evaluated with **Ragas** → gated → weak prompts are **diagnosed, rewritten, re-evaluated, and released** through a versioned prompt registry. |
+| 🎯 **Per-agent evaluation** | Each specialist is scored **individually** (groundedness + richness) and charted in Langfuse — so a weak run is attributed to a *specific* agent, not just the final report. |
+| 📥 **Teachable at runtime** | Upload a document, paste text, or pull a **real SEC filing by ticker** from the UI — it's chunked, embedded, and searchable by the very next run. Ingestion is idempotent. |
+| 📄 **Export the brief** | One click renders the run as a clean, paper-formatted **PDF** — verdict, findings with sources, debate, and known unknowns. |
 | 👁️ **Observability-first** | Every agent node and tool call is traced in **Langfuse** with token + cost; Ragas scores pushed as dashboards. |
 | 🧪 **Fully offline test suite** | CI-friendly, hermetic tests run with zero API keys or network — stub LLM + hashing embedder. |
 | 💸 **$0 to run** | Groq free tier + local embeddings + self-hosted Qdrant & Langfuse. Clone and run for nothing. |
@@ -189,6 +193,10 @@ docker compose up                          # qdrant + langfuse + api + web
 | `GET` | `/health`, `/health/ready` | liveness + per-integration readiness |
 | `POST` | `/research/sync` | run the multi-agent pipeline, return the cited report |
 | `GET` | `/research/stream?q=...` | SSE stream of per-agent events (drives the war-room UI) |
+| `GET` | `/corpus/status` | what's indexed — documents + chunk count |
+| `POST` | `/corpus/upload` | ingest an uploaded `.md`/`.txt` file into the live index |
+| `POST` | `/corpus/text` | ingest pasted text |
+| `POST` | `/corpus/sec` | fetch a real SEC filing by ticker and ingest it |
 | `GET` | `/llmops/prompts` | list versioned synthesizer prompts (active + history) |
 | `POST` | `/llmops/optimize` | run the self-improvement loop (eval → gate → rewrite → release) |
 
@@ -200,7 +208,7 @@ apps/api/atlas/
   core/agents/         specialists (4), debate (bull/bear/judge), synthesizer, base
   core/rag/            LangChain hybrid retrieval + CRAG, ingestion, embeddings
   core/memory/         episodic (SQLite+vectors), procedural (playbooks), summarizer
-  core/llmops/         prompt registry, auto-eval, gate, self-improvement optimizer
+  core/llmops/         prompt registry, auto-eval, per-agent eval, gate, self-improvement optimizer
   core/tools/          web_search (Tavily), sec, market (stock + news)
   eval/                golden set, retrieval eval, Ragas → Langfuse scores
   routers/             health, research (SSE), llmops

@@ -27,6 +27,9 @@ Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-ch
   Tools:  web_search (Tavily) · sec_edgar · stock_data (stooq) · company_news
   LLM Ops (self-improving):
     Langfuse trace + auto/Ragas eval → gate → diagnose → rewrite prompt → re-eval → release (prompt registry)
+    + per-agent eval (groundedness/richness per specialist) → attributes a weak run to one agent
+  Ingestion (separate from the run — agents read the index, never fill it):
+    upload file / paste text / SEC ticker  →  /corpus/*  →  chunk → embed → Qdrant
 ```
 
 ## Stack (locked)
@@ -57,7 +60,7 @@ apps/
       llm.py           # shared ChatGroq factory (temperature/model overrides)
       observability.py # Langfuse callback handler (None when unconfigured)
       paths.py         # repo-root-anchored data/cache paths
-      routers/         # FastAPI routers: health, research (SSE), llmops
+      routers/         # FastAPI routers: health, research (SSE), corpus (ingest), llmops
       core/
         graph.py       # LangGraph wiring: recall → supervisor → specialists → debate → synthesize → remember
         state.py       # shared "research scratchpad" state
@@ -65,7 +68,7 @@ apps/
         agents/        # base, specialists (4), debate (bull/bear/judge), synthesizer
         rag/           # chunking, embeddings, index (LangChain hybrid), crag, ingest, loaders
         memory/        # episodic (SQLite+vectors), procedural (playbooks), summarizer
-        llmops/        # registry, evaluate, gate, optimizer (self-improvement loop)
+        llmops/        # registry, evaluate, agent_eval (per-specialist), gate, optimizer
         tools/         # web_search (Tavily), sec, market (stock + news)
       eval/            # golden set, retrieval_eval, ragas_eval, langfuse_scores
     tests/             # offline suite (ATLAS_OFFLINE_LLM / ATLAS_OFFLINE_EMBED)
