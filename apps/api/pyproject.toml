@@ -15,6 +15,8 @@ dependencies = [
     # starlette/sse-starlette pinned to fastapi 0.111's range (sse-starlette 3.x needs starlette 1.x)
     "starlette>=0.37,<0.38",
     "sse-starlette>=2.1,<3",
+    # required by FastAPI to parse multipart uploads (/corpus/upload)
+    "python-multipart>=0.0.9",
 
     # --- LLM / orchestration (pinned to the LangChain v0.3 line) ---
     "langchain>=0.3,<0.4",

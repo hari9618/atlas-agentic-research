@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .config import get_settings
-from .routers import health, llmops, research
+from .routers import corpus, health, llmops, research
 
 
 def _configure_logging(level: str) -> None:
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(research.router)
+    app.include_router(corpus.router)
     app.include_router(llmops.router)
 
     @app.get("/", tags=["meta"])
