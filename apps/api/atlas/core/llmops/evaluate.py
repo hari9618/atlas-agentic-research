@@ -48,13 +48,26 @@ def _judge_relevancy(query: str, report: str) -> float:
 
 
 def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
-    """Return {faithfulness, relevancy, overall} and (optionally) push to Langfuse."""
+    """Return {faithfulness, relevancy, overall, agents} and (optionally) push to Langfuse.
+
+    ``agents`` holds the per-specialist scores (see ``agent_eval``), so a weak run can be
+    attributed to a specific agent rather than only the final report.
+    """
     report = result.get("report", "")
     findings = result.get("findings", [])
     faithfulness = round(citation_coverage(report, findings), 3)
     relevancy = _judge_relevancy(query, report)
     overall = round(0.5 * faithfulness + 0.5 * relevancy, 3)
-    scores = {"faithfulness": faithfulness, "relevancy": relevancy, "overall": overall}
+
+    from .agent_eval import evaluate_agents
+
+    agents = evaluate_agents(findings, query=query, push=push)
+    scores = {
+        "faithfulness": faithfulness,
+        "relevancy": relevancy,
+        "overall": overall,
+        "agents": agents,
+    }
 
     if push:
         try:
