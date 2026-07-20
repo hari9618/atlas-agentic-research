@@ -12,6 +12,7 @@ import logging
 
 from ..memory.procedural import ProceduralMemory
 from ..rag.crag import corrective_retrieve
+from ..rag.web_evidence import web_evidence
 from ..state import ResearchState
 from .base import chat, extract_json, format_evidence, llm_ready
 
@@ -53,7 +54,15 @@ def _make_specialist(name: str, focus: str, role: str):
         from ..graph import get_index  # late import avoids a cycle
 
         query = state["query"]
-        chunks = corrective_retrieve(get_index(), f"{focus} {query}", top_k=4).chunks
+        # web_fallback makes CRAG's corrective step real: when local evidence grades
+        # INCORRECT (e.g. the company was never ingested), pull live web evidence
+        # instead of returning nothing.
+        result = corrective_retrieve(
+            get_index(), f"{focus} {query}", top_k=4, web_fallback=web_evidence
+        )
+        chunks = result.chunks
+        if result.used_web_fallback:
+            log.info("%s fell back to web evidence", name)
 
         if not llm_ready():
             cite = chunks[0].chunk.citation() if chunks else "n/a"

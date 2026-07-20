@@ -116,6 +116,17 @@ def _rewrite_query(query: str) -> str:
         return query
 
 
+def _interleave(local: list, web: list) -> list:
+    """Alternate two ranked lists so neither source is crowded out of top_k."""
+    out: list = []
+    for i in range(max(len(local), len(web))):
+        if i < len(local):
+            out.append(local[i])
+        if i < len(web):
+            out.append(web[i])
+    return out
+
+
 def corrective_retrieve(
     index: HybridIndex,
     query: str,
@@ -143,12 +154,20 @@ def corrective_retrieve(
         merged.setdefault(c.chunk.chunk_id, c)
     chunks = sorted(merged.values(), key=lambda c: c.score, reverse=True)[:top_k]
 
+    # CRAG's corrective step: INCORRECT discards local evidence in favour of the web;
+    # AMBIGUOUS *combines* both. Firing only on INCORRECT (as this once did) misses the
+    # common case — a question about an un-ingested company still overlaps corpus
+    # vocabulary ("robotics", "revenue"), grading AMBIGUOUS and silently yielding
+    # partial evidence about the wrong company.
     used_web = False
-    if grade is Grade.INCORRECT and web_fallback is not None:
+    if grade is not Grade.CORRECT and web_fallback is not None:
         try:
             web_chunks = web_fallback(query)
             if web_chunks:
-                chunks = (web_chunks + chunks)[:top_k]
+                if grade is Grade.INCORRECT:
+                    chunks = (web_chunks + chunks)[:top_k]  # web leads
+                else:
+                    chunks = _interleave(chunks, web_chunks)[:top_k]  # both represented
                 used_web = True
         except Exception as exc:  # pragma: no cover
             log.warning("web_fallback failed: %s", exc)
