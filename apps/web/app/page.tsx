@@ -3,8 +3,11 @@
 import { useRef, useState } from "react";
 import { AgentGraph, type NodeStatus } from "@/components/AgentGraph";
 import { ConfidenceDial } from "@/components/ConfidenceDial";
+import { CorpusPanel } from "@/components/CorpusPanel";
 import { DebatePanel } from "@/components/DebatePanel";
+import { ExportButton } from "@/components/ExportButton";
 import { FindingsList } from "@/components/FindingsList";
+import { PrintableReport } from "@/components/PrintableReport";
 import { ReportView } from "@/components/ReportView";
 import {
   type Citation,
@@ -102,7 +105,8 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8">
+    <>
+      <main className="screen-only mx-auto max-w-6xl px-5 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">
           Atlas <span className="text-sky-400">·</span>{" "}
@@ -147,6 +151,10 @@ export default function Home() {
         </div>
       )}
 
+      <div className="mb-6">
+        <CorpusPanel />
+      </div>
+
       <section className="mb-6 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
           Agent pipeline
@@ -161,7 +169,7 @@ export default function Home() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="space-y-6 lg:col-span-2">
-          <Panel title="Synthesized brief">
+          <Panel title="Synthesized brief" action={<ExportButton ready={Boolean(report)} />}>
             <ReportView report={report} uncertainties={uncertainties} citations={citations} />
           </Panel>
           <Panel title="Bull vs Bear debate">
@@ -184,16 +192,37 @@ export default function Home() {
       <footer className="mt-10 text-center text-xs text-slate-600">
         Groq Llama 3.3 70B · LangGraph · Hybrid RAG · traced in Langfuse
       </footer>
-    </main>
+      </main>
+
+      {/* Paper version — hidden on screen, rendered only by the print dialog. */}
+      <PrintableReport
+        query={query}
+        report={report}
+        confidence={confidence}
+        findings={findings}
+        uncertainties={uncertainties}
+        citations={citations}
+        debate={debate}
+      />
+    </>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-        {title}
-      </h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">{title}</h2>
+        {action}
+      </div>
       {children}
     </div>
   );

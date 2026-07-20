@@ -33,3 +33,44 @@ body {
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+
+/* ---- Print / "Save as PDF" -------------------------------------------------
+   The war-room UI is dark and interactive; a printed brief should be neither.
+   On screen the paper layout is hidden; when printing we swap them so the PDF
+   contains only <PrintableReport> on a white page. */
+.print-only { display: none; }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Hide the app shell (nav, inputs, panels, glow) — keep only the document. */
+  .screen-only {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Let the browser render the explicit colours in PrintableReport. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Avoid orphaned headings / split blocks across pages. */
+  h1,
+  h2,
+  h3 {
+    break-after: avoid-page;
+  }
+}
