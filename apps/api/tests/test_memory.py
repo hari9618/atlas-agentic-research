@@ -36,6 +36,59 @@ def test_episodic_relevance_ranks_similar_query_first(tmp_path):
     assert rel and "Helios" in rel[0].query
 
 
+def test_embeddings_are_persisted_at_save_time(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "ep.sqlite"
+    mem = EpisodicMemory(db_path=db, offline=True)
+    mem.save("Helios revenue", "r", 0.7, [])
+    with sqlite3.connect(str(db)) as c:
+        blob = c.execute("SELECT embedding FROM episodes").fetchone()[0]
+    assert blob, "the query vector should be stored, not recomputed on every recall"
+
+
+def test_recall_does_not_reembed_stored_episodes(tmp_path):
+    """Regression: recall was O(n) embedding work per call. It must now embed only
+    the incoming query, never the stored ones."""
+    mem = EpisodicMemory(db_path=tmp_path / "ep.sqlite", offline=True)
+    for i in range(5):
+        mem.save(f"Helios analysis {i}", "r", 0.6, [])
+
+    embedder = mem._embed()
+    calls: list[list[str]] = []
+    original = embedder.embed_documents
+    embedder.embed_documents = lambda texts: (calls.append(texts), original(texts))[1]
+
+    mem.relevant("Helios financials", limit=2)
+    assert calls == [], "stored episodes were re-embedded; the persisted vectors were ignored"
+
+
+def test_legacy_rows_without_embeddings_are_backfilled(tmp_path):
+    """A database written before the embedding column must still work."""
+    import sqlite3
+
+    db = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(str(db)) as c:
+        c.execute(
+            """CREATE TABLE episodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, query TEXT NOT NULL, target TEXT,
+                report TEXT, confidence REAL, findings TEXT, created_at TEXT NOT NULL)"""
+        )
+        c.execute(
+            "INSERT INTO episodes (query,target,report,confidence,findings,created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            ("Helios Robotics revenue", "", "old report", 0.7, "[]", "2026-01-01T00:00:00Z"),
+        )
+
+    mem = EpisodicMemory(db_path=db, offline=True)  # migration runs here
+    rel = mem.relevant("Helios financials", limit=1)
+    assert rel and "Helios" in rel[0].query
+
+    with sqlite3.connect(str(db)) as c:
+        blob = c.execute("SELECT embedding FROM episodes").fetchone()[0]
+    assert blob, "the legacy row should have been backfilled after first recall"
+
+
 def test_procedural_loads_playbook_and_missing_is_empty():
     proc = ProceduralMemory()
     assert "Risk analyst" in proc.get("risk")
