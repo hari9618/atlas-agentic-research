@@ -17,6 +17,9 @@ dependencies = [
     "sse-starlette>=2.1,<3",
     # required by FastAPI to parse multipart uploads (/corpus/upload)
     "python-multipart>=0.0.9",
+    # extract text from uploaded PDF / Word documents (core/rag/extract.py)
+    "pdfplumber>=0.11",
+    "python-docx>=1.1",
 
     # --- LLM / orchestration (pinned to the LangChain v0.3 line) ---
     "langchain>=0.3,<0.4",

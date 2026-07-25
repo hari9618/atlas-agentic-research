@@ -51,10 +51,33 @@ def test_upload_accepts_a_text_file():
     assert r.json()["chunks_created"] >= 1
 
 
-def test_upload_rejects_binary_extensions():
-    file = ("report.pdf", io.BytesIO(b"%PDF-1.4 binary"), "application/pdf")
+def test_upload_rejects_unsupported_extensions():
+    file = ("data.csv", io.BytesIO(b"a,b,c\n1,2,3"), "text/csv")
     r = client.post("/corpus/upload", files={"file": file})
-    assert "error" in r.json()  # indexing binary would poison retrieval
+    assert "error" in r.json()  # only text/pdf/docx are parseable
+
+
+def test_upload_rejects_corrupt_pdf_gracefully():
+    # A .pdf that isn't a real PDF must fail with a message, not a 500.
+    file = ("report.pdf", io.BytesIO(b"not actually a pdf"), "application/pdf")
+    r = client.post("/corpus/upload", files={"file": file})
+    assert r.status_code == 200 and "error" in r.json()
+
+
+def test_upload_accepts_a_docx():
+    import docx
+
+    d = docx.Document()
+    d.add_paragraph(LONG_TEXT)
+    buf = io.BytesIO()
+    d.save(buf)
+    buf.seek(0)
+    r = client.post(
+        "/corpus/upload",
+        files={"file": ("brief.docx", buf,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert r.status_code == 200 and r.json().get("chunks_created", 0) >= 1
 
 
 def test_upload_rejects_too_short_content():

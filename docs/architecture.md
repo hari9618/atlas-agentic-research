@@ -100,7 +100,9 @@ distinct ingestion path that runs *before* any question is asked.
 ║                              ▼                                ║
 ║              🌐 web_evidence()      core/rag/web_evidence.py  ║
 ║                 web_search (Tavily) → RetrievedChunk          ║
-║                 scored below local; fails soft if no key      ║
+║                 → cross-encoder re-rank   core/rag/reranker.py║
+║                   (measured relevance, not a fixed score)     ║
+║                 fails soft if no key                          ║
 ║                              ▼                                ║
 ║   ONE evidence format, whatever the origin — every chunk      ║
 ║   carries source/title/url, so a web claim is cited exactly   ║
@@ -208,10 +210,19 @@ company.
 
 Web hits are converted to the same `RetrievedChunk` type as ingested content, carrying
 `source`, `title`, and `url`. One evidence format means the agents, the citation
-system, and the grounding guardrail need no special case for provenance. Web chunks
-are scored below local ones (0.45, decaying by rank) because the corpus is curated and
-the open web is not. No Tavily key, a network failure, or an offline test run all yield
-an empty list — "no web evidence", never an error.
+system, and the grounding guardrail need no special case for provenance. Crucially, web
+chunks pass through the **same cross-encoder re-ranker** as local evidence
+(`core/rag/reranker.py`), so a weak Tavily hit sinks on measured relevance rather than
+entering the prompt on a fixed score. No Tavily key, a network failure, or an offline
+test run all yield an empty list — "no web evidence", never an error.
+
+### Uploaded documents
+
+Uploads are parsed to text before indexing (`core/rag/extract.py`): **PDF** via
+pdfplumber, **Word** via python-docx (tables included — that's where financials often
+live), and plain `.txt`/`.md`. The binary is never indexed directly; an unreadable,
+scanned, or encrypted file is rejected with a message rather than silently poisoning
+retrieval with garbage.
 
 ## Storage design
 
@@ -245,6 +256,8 @@ collection would start to pay off.
 | RAG engine | `core/rag/index.py` · `crag.py` · `chunking.py` · `embeddings.py` · `ingest.py` |
 | MCP tools | `core/tools/web_search.py` · `sec.py` · `market.py` |
 | Web→evidence adapter | `core/rag/web_evidence.py` (turns search hits into citable chunks) |
+| Cross-encoder re-rank | `core/rag/reranker.py` (reusable; scores web evidence like local) |
+| Document extraction | `core/rag/extract.py` (PDF / Word / text → plain text) |
 | Memory | `core/memory/episodic.py` · `procedural.py` · `summarizer.py` |
 | Guardrail | `core/guardrails.py` |
 | LLM-Ops loop | `core/llmops/evaluate.py` · `agent_eval.py` · `gate.py` · `optimizer.py` · `registry.py` |

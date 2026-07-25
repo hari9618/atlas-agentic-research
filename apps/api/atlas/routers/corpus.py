@@ -18,15 +18,15 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..core.rag.chunking import chunk_document
+from ..core.rag.extract import extract_text
 from ..core.rag.types import Document
 
 router = APIRouter(prefix="/corpus", tags=["corpus"])
 log = logging.getLogger("atlas.routers.corpus")
 
-# Plain-text formats only: the chunker works on text, and silently indexing the
-# binary of a .pdf/.docx would poison retrieval with garbage.
-ALLOWED_SUFFIXES = (".md", ".txt", ".markdown")
-MAX_BYTES = 2_000_000
+# Documents are parsed to text before indexing (see core/rag/extract.py). PDFs and
+# Word files are supported; their binary is never indexed directly.
+MAX_BYTES = 10_000_000
 
 
 def _slug(value: str) -> str:
@@ -96,20 +96,15 @@ async def add_text(req: TextRequest) -> dict:
 
 @router.post("/upload")
 async def upload(file: UploadFile = File(...)) -> dict:
-    """Ingest an uploaded .md/.txt file."""
+    """Ingest an uploaded document — .txt, .md, .pdf, or .docx."""
     name = file.filename or "upload.txt"
-    if not name.lower().endswith(ALLOWED_SUFFIXES):
-        return {"error": f"Unsupported file type. Allowed: {', '.join(ALLOWED_SUFFIXES)}"}
-
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         return {"error": f"File too large (max {MAX_BYTES // 1_000_000} MB)."}
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return {"error": "File must be UTF-8 text."}
-    if len(text.strip()) < 50:
-        return {"error": "File is too short to be useful evidence."}
+
+    text, error = await run_in_threadpool(extract_text, name, raw)
+    if error:
+        return {"error": error}
 
     stem = name.rsplit(".", 1)[0]
     doc = Document(doc_id=_slug(stem), text=text, source="upload", title=stem, url=name)

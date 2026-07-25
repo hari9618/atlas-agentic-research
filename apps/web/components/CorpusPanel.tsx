@@ -97,7 +97,8 @@ export function CorpusPanel() {
       {open && (
         <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
           <p className="text-xs text-slate-500">
-            Agents can only cite what has been indexed. Add a document, then ask about it.
+            Agents can only cite what has been indexed. Add a PDF, Word doc, or text file
+            — or pull a filing by ticker — then ask about it.
           </p>
 
           {/* Upload a file */}
@@ -107,16 +108,16 @@ export function CorpusPanel() {
               disabled={busy}
               className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 transition hover:border-sky-500 disabled:opacity-50"
             >
-              Upload .md / .txt
+              Upload document
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept=".md,.txt,.markdown"
+              accept=".md,.txt,.markdown,.pdf,.docx"
               onChange={onFile}
               className="hidden"
             />
-            <span className="text-xs text-slate-600">plain text only, max 2 MB</span>
+            <span className="text-xs text-slate-600">PDF, Word, or text · max 10 MB</span>
           </div>
 
           {/* Pull a real SEC filing */}

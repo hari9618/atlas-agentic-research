@@ -40,7 +40,7 @@ Ask Atlas a question like _"Should I worry about Company X as a competitor?"_ an
 | 🗂️ **Four memory layers** | **Working** (graph state) · **Semantic** (RAG) · **Episodic** (SQLite + vectors of past runs) · **Procedural** (playbooks) — plus a **Summarizer agent** that distills old runs into durable facts. |
 | 📈 **Self-improving LLM-Ops** | Every run is auto-evaluated with **Ragas** → gated → weak prompts are **diagnosed, rewritten, re-evaluated, and released** through a versioned prompt registry. |
 | 🎯 **Per-agent evaluation** | Each specialist is scored **individually** (groundedness + richness) and charted in Langfuse — so a weak run is attributed to a *specific* agent, not just the final report. |
-| 📥 **Teachable at runtime** | Upload a document, paste text, or pull a **real SEC filing by ticker** from the UI — it's chunked, embedded, and searchable by the very next run. Ingestion is idempotent. |
+| 📥 **Teachable at runtime** | Upload a **PDF / Word / text** document, paste text, or pull a **real SEC filing by ticker** from the UI — it's parsed, chunked, embedded, and searchable by the very next run. Ingestion is idempotent. |
 | 📄 **Export the brief** | One click renders the run as a clean, paper-formatted **PDF** — verdict, findings with sources, debate, and known unknowns. |
 | 👁️ **Observability-first** | Every agent node and tool call is traced in **Langfuse** with token + cost; Ragas scores pushed as dashboards. |
 | 🧪 **Fully offline test suite** | CI-friendly, hermetic tests run with zero API keys or network — stub LLM + hashing embedder. |
@@ -194,7 +194,7 @@ docker compose up                          # qdrant + langfuse + api + web
 | `POST` | `/research/sync` | run the multi-agent pipeline, return the cited report |
 | `GET` | `/research/stream?q=...` | SSE stream of per-agent events (drives the war-room UI) |
 | `GET` | `/corpus/status` | what's indexed — documents + chunk count |
-| `POST` | `/corpus/upload` | ingest an uploaded `.md`/`.txt` file into the live index |
+| `POST` | `/corpus/upload` | ingest an uploaded PDF / Word / text file into the live index |
 | `POST` | `/corpus/text` | ingest pasted text |
 | `POST` | `/corpus/sec` | fetch a real SEC filing by ticker and ingest it |
 | `GET` | `/llmops/prompts` | list versioned synthesizer prompts (active + history) |
