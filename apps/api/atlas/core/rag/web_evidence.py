@@ -15,11 +15,13 @@ from __future__ import annotations
 import logging
 import os
 
+from .reranker import rerank_chunks
 from .types import Chunk, RetrievedChunk
 
 log = logging.getLogger("atlas.rag.web_evidence")
 
-# Web hits rank below local corpus evidence: the corpus is curated, the web is not.
+# Provisional score before re-ranking; the top hit starts a touch below a strong
+# local match, then the cross-encoder assigns the real, comparable score.
 _WEB_BASE_SCORE = 0.45
 
 
@@ -28,7 +30,7 @@ def _offline() -> bool:
 
 
 def web_evidence(query: str, *, max_results: int = 4) -> list[RetrievedChunk]:
-    """Search the web and return citable chunks (empty when unavailable)."""
+    """Search the web and return citable chunks, re-ranked (empty when unavailable)."""
     if _offline():
         return []
     try:
@@ -58,10 +60,15 @@ def web_evidence(query: str, *, max_results: int = 4) -> list[RetrievedChunk]:
                     url=url,
                     ordinal=i,
                 ),
-                # Decay by rank so the top hit outranks the fourth.
+                # Provisional score by rank; the re-rank below replaces it with a
+                # measured relevance so web evidence is comparable to local evidence.
                 score=round(_WEB_BASE_SCORE - i * 0.05, 4),
             )
         )
+
+    # Score web chunks with the same cross-encoder the local path uses, so a weak
+    # Tavily hit sinks on measured relevance instead of riding a fixed score.
+    chunks = rerank_chunks(query, chunks)
     if chunks:
         log.info("web fallback supplied %d evidence chunks for %r", len(chunks), query[:60])
     return chunks
