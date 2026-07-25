@@ -23,7 +23,7 @@ import logging
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -98,7 +98,7 @@ class EpisodicMemory:
     # ---- write ----
     def save(self, query: str, report: str, confidence: float | None,
              findings: list[dict], target: str = "") -> int:
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(UTC).isoformat()
         # Embed once, here — recall then reads the vector instead of recomputing it.
         try:
             blob = self._pack(self._embed().embed_query(query))
@@ -139,7 +139,7 @@ class EpisodicMemory:
         if missing:
             emb = self._embed()
             fresh = emb.embed_documents([ep.query for ep, _ in missing])
-            for (ep, idx), vec in zip((m for m in missing), fresh):
+            for (ep, idx), vec in zip(missing, fresh, strict=False):
                 rows[idx] = (ep, np.asarray(vec, dtype=np.float32))
             self._backfill({ep.id: rows[idx][1] for ep, idx in missing})
 

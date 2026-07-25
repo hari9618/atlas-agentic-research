@@ -41,7 +41,9 @@ def _cik_for_ticker(client: httpx.Client, ticker: str) -> str | None:
     return None
 
 
-def fetch_latest_filing(ticker: str, form: str = "10-K", max_chars: int = 200_000) -> Document | None:
+def fetch_latest_filing(
+    ticker: str, form: str = "10-K", max_chars: int = 200_000
+) -> Document | None:
     """Fetch the most recent `form` filing for `ticker` as a Document (plain text)."""
     with httpx.Client(timeout=30.0) as client:
         cik = _cik_for_ticker(client, ticker)

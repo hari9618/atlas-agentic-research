@@ -52,7 +52,7 @@ def rerank_chunks(
         log.warning("rerank unavailable (%s) — keeping original order", exc)
         return chunks[:top_n] if top_n else chunks
 
-    for c, s in zip(chunks, scores):
+    for c, s in zip(chunks, scores, strict=False):
         c.rerank_score = float(s)
         c.score = float(s)
     ranked = sorted(chunks, key=lambda c: c.rerank_score or 0.0, reverse=True)

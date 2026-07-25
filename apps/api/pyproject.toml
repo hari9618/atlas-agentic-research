@@ -49,7 +49,9 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
-    "ruff>=0.8",
+    # Pinned so CI lints with the same ruff as local — an unpinned ruff drifts to a
+    # newer default rule set and fails a build that passed the day before.
+    "ruff==0.16.0",
 ]
 eval = [
     "ragas>=0.2",
@@ -59,6 +61,24 @@ eval = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+# Pin the rule set explicitly so linting is deterministic regardless of the ruff
+# version CI happens to install — otherwise a newer ruff's expanded defaults break
+# a build that was green yesterday.
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    # Broad `except Exception` is intentional across Atlas: every integration
+    # (Langfuse, Qdrant, Ragas, web tools) degrades gracefully rather than taking
+    # a run down. This is a documented design rule (see CLAUDE.md), not an oversight.
+    "BLE001",
+    # FastAPI's File(...) / Depends() in a parameter default is the framework idiom.
+    "B008",
+    # Grade(str, Enum) is a deliberate JSON-serializable enum pattern.
+    "UP042",
+    # Em/en dashes in docstrings and prose are intentional, not typos.
+    "RUF001", "RUF002", "RUF003",
+]
 
 [tool.pytest.ini_options]
 # asyncio_mode is re-added with pytest-asyncio once we have async-native tests.

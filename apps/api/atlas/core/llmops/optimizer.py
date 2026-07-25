@@ -75,7 +75,9 @@ def optimize(query: str, *, max_iters: int = 1) -> dict:
 
     for i in range(1, max_iters + 1):
         diagnosis = "; ".join(g.reasons) or "low overall score"
-        candidate = propose_improved_prompt(reg.effective(_PROMPT_NAME), diagnosis, result.get("report", ""))
+        candidate = propose_improved_prompt(
+            reg.effective(_PROMPT_NAME), diagnosis, result.get("report", "")
+        )
         reg.set_candidate(_PROMPT_NAME, candidate)
 
         result_i = research(query, thread_id=f"ops-{i}")
@@ -89,7 +91,9 @@ def optimize(query: str, *, max_iters: int = 1) -> dict:
         if scores_i["overall"] > baseline_overall:
             best_result = result_i
         if g_i.passed and scores_i["overall"] >= baseline_overall:
-            new_version = reg.release_candidate(_PROMPT_NAME, scores_i, notes=f"auto-improve: {diagnosis}")
+            new_version = reg.release_candidate(
+                _PROMPT_NAME, scores_i, notes=f"auto-improve: {diagnosis}"
+            )
             released = True
             best_result = result_i
             break

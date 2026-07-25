@@ -31,8 +31,7 @@ def chunk_document(
 
     step = max(1, chunk_words - overlap_words)
     chunks: list[Chunk] = []
-    ordinal = 0
-    for start in range(0, len(words), step):
+    for ordinal, start in enumerate(range(0, len(words), step)):
         window = words[start : start + chunk_words]
         if not window:
             break
@@ -50,7 +49,6 @@ def chunk_document(
                 metadata=dict(doc.metadata),
             )
         )
-        ordinal += 1
         if start + chunk_words >= len(words):
             break
     return chunks

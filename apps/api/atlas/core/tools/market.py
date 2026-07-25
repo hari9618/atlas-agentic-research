@@ -28,7 +28,7 @@ def stock_quote(ticker: str) -> dict:
             return {}
         headers = [h.strip().lower() for h in lines[0].split(",")]
         values = [v.strip() for v in lines[1].split(",")]
-        row = dict(zip(headers, values))
+        row = dict(zip(headers, values, strict=False))
         if row.get("close") in (None, "", "N/D"):
             return {}
         return {

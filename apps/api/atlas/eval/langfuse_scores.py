@@ -13,6 +13,7 @@ eval still prints its table.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -90,7 +91,5 @@ def push_item_scores(
 def flush() -> None:
     client = _client()
     if client is not None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             client.flush()
-        except Exception:  # pragma: no cover
-            pass

@@ -8,7 +8,7 @@
 A Summarizer agent periodically distills episodic memory into semantic facts.
 """
 
-from .episodic import EpisodicMemory, Episode
+from .episodic import Episode, EpisodicMemory
 from .procedural import ProceduralMemory
 
-__all__ = ["EpisodicMemory", "Episode", "ProceduralMemory"]
+__all__ = ["Episode", "EpisodicMemory", "ProceduralMemory"]

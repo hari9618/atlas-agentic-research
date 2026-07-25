@@ -12,13 +12,13 @@ from .ingest import ingest_documents
 from .types import Chunk, Document, RetrievedChunk
 
 __all__ = [
-    "HybridIndex",
-    "build_index",
-    "ingest_documents",
-    "corrective_retrieve",
-    "CragResult",
-    "Grade",
     "Chunk",
+    "CragResult",
     "Document",
+    "Grade",
+    "HybridIndex",
     "RetrievedChunk",
+    "build_index",
+    "corrective_retrieve",
+    "ingest_documents",
 ]

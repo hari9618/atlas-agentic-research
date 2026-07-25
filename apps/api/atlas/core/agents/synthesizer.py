@@ -64,8 +64,9 @@ def synthesize_node(state: ResearchState) -> dict:
     )
 
     meta = chat(
-        f"Given this brief, output ONLY JSON with an overall confidence (0..1) and a list "
-        f'of uncertainties: {{"confidence": 0.0, "uncertainties": ["..."]}}\n\nBrief:\n{report[:3000]}',
+        "Given this brief, output ONLY JSON with an overall confidence (0..1) and a list "
+        'of uncertainties: {"confidence": 0.0, "uncertainties": ["..."]}\n\n'
+        f"Brief:\n{report[:3000]}",
         temperature=0.0, run_name="synthesizer.meta",
     )
     parsed = extract_json(meta, default={})

@@ -8,4 +8,4 @@ from .market import company_news, stock_quote
 from .sec import sec_filing_excerpt
 from .web_search import web_search
 
-__all__ = ["web_search", "company_news", "stock_quote", "sec_filing_excerpt"]
+__all__ = ["company_news", "sec_filing_excerpt", "stock_quote", "web_search"]

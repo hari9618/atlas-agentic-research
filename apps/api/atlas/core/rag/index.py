@@ -174,7 +174,7 @@ class HybridIndex:
         log.info("Saved index (%d chunks) → %s.json", len(self.chunks), base)
 
     @classmethod
-    def load(cls, base: Path = DEFAULT_CACHE, offline: bool = False) -> "HybridIndex":
+    def load(cls, base: Path = DEFAULT_CACHE, offline: bool = False) -> HybridIndex:
         idx = build_index(offline=offline)
         payload = json.loads(base.with_suffix(".json").read_text(encoding="utf-8"))
         idx.add_chunks([Chunk(**c) for c in payload["chunks"].values()])

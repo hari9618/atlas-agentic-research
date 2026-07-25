@@ -31,7 +31,7 @@ def test_score_agent_penalises_missing_citations():
 def test_stub_and_empty_findings_do_not_count_as_solid():
     findings = [
         {"agent": "news_sentiment", "claim": "[offline stub] news analysis", "citation": "n/a"},
-        {"agent": "news_sentiment", "claim": "No well-grounded finding extracted.", "citation": "n/a"},
+        {"agent": "news_sentiment", "claim": "No well-grounded finding.", "citation": "n/a"},
     ]
     s = score_agent(findings)
     assert s["n_findings"] == 0

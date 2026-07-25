@@ -165,7 +165,7 @@ def run(offline_embed: bool = False) -> dict:
 
     # push to Langfuse + aggregate
     agg: dict[str, list[float]] = {k: [] for k in TARGETS}
-    for sample, metrics in zip(samples, per_item):
+    for sample, metrics in zip(samples, per_item, strict=False):
         push_item_scores(
             metrics,
             question=sample["question"],

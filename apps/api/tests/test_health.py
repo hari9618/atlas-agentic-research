@@ -7,8 +7,9 @@ graceful-degradation contract from CLAUDE.md.
 
 from __future__ import annotations
 
-from atlas.main import app
 from fastapi.testclient import TestClient
+
+from atlas.main import app
 
 client = TestClient(app)
 
