@@ -3,6 +3,7 @@ doc_id: helios_10k_fy2025
 title: Helios Robotics Inc. 10-K (FY2025)
 source: sec_edgar
 url: https://www.sec.gov/example/helios-10k-fy2025
+published_at: 2025-09-30
 ---
 
 PART I — BUSINESS

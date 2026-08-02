@@ -28,6 +28,7 @@ from langchain_core.vectorstores import InMemoryVectorStore
 from ...config import get_settings
 from ...paths import cache_dir
 from .embeddings import get_lc_embeddings
+from .provenance import trust_priority, trust_weight
 from .types import Chunk, RetrievedChunk
 
 log = logging.getLogger("atlas.rag.index")
@@ -64,6 +65,19 @@ class HybridIndex:
         self._vectorstore = None
         self._bm25 = None
         self._dirty = True
+
+    def clear(self) -> None:
+        """Drop all indexed content and reset the cached backends.
+
+        Used to reset the knowledge base to empty (e.g. a clean demo) so only
+        freshly uploaded documents are searchable.
+        """
+        self.chunks.clear()
+        self._lcdocs.clear()
+        self._vectorstore = None
+        self._bm25 = None
+        self._dirty = True
+        log.info("Cleared the index.")
 
     # ---- build ----
     def add_chunks(self, chunks: list[Chunk]) -> None:
@@ -160,11 +174,16 @@ class HybridIndex:
                 url=d.metadata.get("url", ""),
                 ordinal=d.metadata.get("ordinal", 0),
             )
-            score = float(d.metadata.get("relevance_score", 1.0 / (rank + 1)))
+            base = float(d.metadata.get("relevance_score", 1.0 / (rank + 1)))
+            # Down-rate the score by provenance (so derived carries a lower score
+            # downstream), but the *primary* sort key below is the trust tier — an
+            # authoritative source always outranks Atlas's own derived memory.
+            score = base * trust_weight(chunk.source)
             results.append(RetrievedChunk(chunk=chunk, score=score))
-            if len(results) >= top_k:
-                break
-        return results
+        # Authoritative before web before derived; within a tier, by score. For an
+        # all-authoritative corpus this is just a score sort — ordering is unchanged.
+        results.sort(key=lambda r: (trust_priority(r.chunk.source), -r.score))
+        return results[:top_k]
 
     # ---- persistence (store the chunks; retrievers rebuild on load) ----
     def save(self, base: Path = DEFAULT_CACHE) -> None:

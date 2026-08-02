@@ -57,6 +57,8 @@ def fetch_latest_filing(
                 continue
             acc = recent["accessionNumber"][i]
             primary = recent["primaryDocument"][i]
+            # Real filing date from EDGAR (never invented) — the document's published_at.
+            filing_date = recent.get("filingDate", [None] * (i + 1))[i]
             url = _ARCHIVE.format(
                 cik_int=int(cik), acc_nodash=acc.replace("-", ""), doc=primary
             )
@@ -69,7 +71,8 @@ def fetch_latest_filing(
                 source="sec_edgar",
                 title=f"{company} {form} ({acc})",
                 url=url,
-                metadata={"ticker": ticker.upper(), "form": form, "accession": acc},
+                metadata={"ticker": ticker.upper(), "form": form, "accession": acc,
+                          "published_at": filing_date},
             )
     log.warning("No %s filing found for %s", form, ticker)
     return None

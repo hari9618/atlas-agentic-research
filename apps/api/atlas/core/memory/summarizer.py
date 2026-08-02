@@ -54,12 +54,17 @@ def consolidate(episodic: EpisodicMemory, index, *, last_n: int | None = None) -
         facts = [ln.strip("-• ").strip() for ln in text.splitlines() if len(ln.strip()) > 10]
 
     if facts:
+        # Tag as ATLAS-DERIVED, not a primary source. Provenance keeps these facts
+        # usable as context while the retrieval weight + citation marker ensure they
+        # can never rank as, or be cited as, authoritative evidence — closing the
+        # source -> finding -> summary -> corpus -> finding feedback loop.
         doc = Document(
-            doc_id=f"memory_facts_{episodic.count()}",
+            doc_id=f"atlas_derived_facts_{episodic.count()}",
             text="\n".join(f"- {f}" for f in facts),
-            source="memory",
+            source="atlas_derived",
             title="Consolidated memory facts",
+            metadata={"trust": "derived", "derived_from_episodes": len(episodes)},
         )
         index.add_chunks(chunk_document(doc))
-        log.info("Consolidated %d facts into semantic memory", len(facts))
+        log.info("Consolidated %d ATLAS-DERIVED facts into semantic memory", len(facts))
     return facts

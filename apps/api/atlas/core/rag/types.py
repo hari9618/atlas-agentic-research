@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .provenance import TrustTier, citation_marker, trust_for_source
+
 
 @dataclass
 class Document:
@@ -36,11 +38,21 @@ class Chunk:
     ordinal: int = 0  # position within the document
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def trust(self) -> TrustTier:
+        """Trust tier derived from the source (authoritative / web / derived)."""
+        return trust_for_source(self.source)
+
     def citation(self) -> str:
-        """A short human-readable citation label."""
+        """A short human-readable citation label.
+
+        Authoritative citations are unmarked; web and Atlas-derived citations carry a
+        visible suffix so they can never be mistaken for primary source evidence.
+        """
         label = self.title or self.doc_id
-        loc = f"#{self.ordinal}"
-        return f"{label} ({self.source}{loc})"
+        base = f"{label} ({self.source}#{self.ordinal})"
+        marker = citation_marker(self.source)
+        return f"{base} {marker}" if marker else base
 
 
 @dataclass

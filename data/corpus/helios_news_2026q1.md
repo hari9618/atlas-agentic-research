@@ -3,6 +3,7 @@ doc_id: helios_news_2026q1
 title: "Helios Robotics signs largest-ever deal, shares jump"
 source: news
 url: https://example-news.com/helios-megadeal-2026
+published_at: 2026-03-12
 ---
 
 AUSTIN — Helios Robotics said on March 4, 2026 that it had signed the largest

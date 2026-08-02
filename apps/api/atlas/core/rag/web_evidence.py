@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime
 
 from .reranker import rerank_chunks
 from .types import Chunk, RetrievedChunk
@@ -41,6 +42,9 @@ def web_evidence(query: str, *, max_results: int = 4) -> list[RetrievedChunk]:
         log.warning("web evidence lookup failed: %s", exc)
         return []
 
+    # Web evidence has no publication date we can trust, but we know when we fetched
+    # it — record that so "is this stale?" is answerable downstream (Phase 6).
+    retrieved_at = datetime.now(UTC).isoformat()
     chunks: list[RetrievedChunk] = []
     for i, hit in enumerate(hits):
         text = (hit.get("content") or "").strip()
@@ -59,6 +63,7 @@ def web_evidence(query: str, *, max_results: int = 4) -> list[RetrievedChunk]:
                     title=title,
                     url=url,
                     ordinal=i,
+                    metadata={"retrieved_at": retrieved_at},
                 ),
                 # Provisional score by rank; the re-rank below replaces it with a
                 # measured relevance so web evidence is comparable to local evidence.

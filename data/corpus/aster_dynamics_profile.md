@@ -3,6 +3,7 @@ doc_id: aster_dynamics_profile
 title: Aster Dynamics Corp. — Competitor Profile
 source: research
 url: https://example-research.com/aster-dynamics-profile
+published_at: 2025-11-05
 ---
 
 Aster Dynamics Corp. is a publicly traded warehouse-automation company headquartered
