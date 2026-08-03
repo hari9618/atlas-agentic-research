@@ -91,13 +91,18 @@ def _make_specialist(name: str, focus: str, role: str):
         findings = []
         for it in items if isinstance(items, list) else []:
             idx = it.get("citation_index", 1)
-            cite = "n/a"
+            cite, ev_text, ev_id = "n/a", "", ""
             if isinstance(idx, int) and 1 <= idx <= len(chunks):
-                cite = chunks[idx - 1].chunk.citation()
+                ch = chunks[idx - 1].chunk
+                # Carry the cited evidence text on the finding so claim-level citation
+                # verification can check entailment deterministically (no re-retrieval).
+                cite, ev_text, ev_id = ch.citation(), ch.text[:500], ch.chunk_id
             findings.append({
                 "agent": name,
                 "claim": str(it.get("claim", "")).strip(),
                 "citation": cite,
+                "evidence_text": ev_text,
+                "evidence_id": ev_id,
                 "confidence": float(it.get("confidence", 0.6) or 0.6),
             })
         if not findings:  # model returned nothing parseable — keep the run honest

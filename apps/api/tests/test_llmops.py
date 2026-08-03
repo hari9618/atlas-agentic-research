@@ -38,11 +38,17 @@ def test_evaluate_run_scores_a_grounded_report():
         "findings": [{"agent": "risk", "claim": "x", "citation": "Helios 10-K (sec_edgar#0)"}],
     }
     s = evaluate_run("Evaluate Helios", result, push=False)
-    assert set(s) == {"faithfulness", "relevancy", "overall", "agents"}
+    assert set(s) == {
+        "faithfulness", "relevancy", "overall", "agents",
+        "citation_coverage", "citation_correctness", "claim_support",
+    }
     assert 0.0 <= s["overall"] <= 1.0
     assert s["faithfulness"] == 1.0  # the citation appears in the report
     # Per-agent scores are attributed to the specialist that produced the finding.
     assert "risk" in s["agents"]
+    # Claim-level metrics are present and well-formed.
+    assert 0.0 <= s["citation_coverage"] <= 1.0
+    assert s["claim_support"]["total"] >= 1
 
 
 def test_optimize_loop_runs_offline():

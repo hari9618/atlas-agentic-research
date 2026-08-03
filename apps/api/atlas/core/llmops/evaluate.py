@@ -60,12 +60,24 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
     overall = round(0.5 * faithfulness + 0.5 * relevancy, 3)
 
     from .agent_eval import evaluate_agents
+    from .claim_verify import verify_claims
 
     agents = evaluate_agents(findings, query=query, push=push)
+    # Claim-level citation verification (Phase 3/4): does each cited claim's evidence
+    # actually support it? Deterministic-first, so this runs even offline.
+    claims = verify_claims(findings)
     scores = {
         "faithfulness": faithfulness,
         "relevancy": relevancy,
         "overall": overall,
+        "citation_coverage": claims["citation_coverage"],
+        "citation_correctness": claims["citation_correctness"],
+        "claim_support": {
+            "supported": claims["supported"],
+            "partial": claims["partial"],
+            "unsupported": claims["unsupported"],
+            "total": claims["total_claims"],
+        },
         "agents": agents,
     }
 
@@ -74,7 +86,12 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
             from ...eval.langfuse_scores import flush, push_item_scores
 
             push_item_scores(
-                {"ragas_faithfulness": faithfulness, "ragas_answer_relevancy": relevancy},
+                {
+                    "ragas_faithfulness": faithfulness,
+                    "ragas_answer_relevancy": relevancy,
+                    "citation_coverage": claims["citation_coverage"],
+                    "citation_correctness": claims["citation_correctness"],
+                },
                 question=query,
                 answer=report[:500],
                 trace_name="atlas_ops_eval",
