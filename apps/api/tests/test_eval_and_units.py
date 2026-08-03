@@ -9,6 +9,7 @@ from atlas.core.rag.ingest import ingest_documents
 from atlas.core.rag.loaders.files import _parse_frontmatter, load_corpus_dir
 from atlas.core.rag.loaders.sec_edgar import _strip_html
 from atlas.core.rag.types import Document
+from atlas.eval.golden import GOLDEN_SET
 from atlas.eval.langfuse_scores import derive_scores
 from atlas.eval.retrieval_eval import run as retrieval_run
 
@@ -16,10 +17,10 @@ from atlas.eval.retrieval_eval import run as retrieval_run
 def test_retrieval_eval_runs_offline_over_golden_set():
     out = retrieval_run(top_k=5, offline=True)
     s = out["summary"]
-    assert s["n"] == 5
+    assert s["n"] == len(GOLDEN_SET)  # runs over the whole verifiable golden set
     assert 0.0 <= s["hit_rate@k"] <= 1.0
     assert s["hit_rate@k"] >= 0.8  # hybrid retrieval should find most relevant docs
-    assert len(out["rows"]) == 5
+    assert len(out["rows"]) == len(GOLDEN_SET)
 
 
 def test_derive_scores_adds_hallucination_and_alerts():

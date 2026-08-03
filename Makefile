@@ -3,7 +3,7 @@
 
 API_DIR := apps/api
 
-.PHONY: help install dev test lint fix ingest eval-retrieval eval-ragas \
+.PHONY: help install dev test lint fix ingest eval-retrieval eval-ragas eval-baseline \
         up down logs build clean
 
 help: ## Show this help
@@ -33,6 +33,9 @@ eval-retrieval: ## Run the dependency-free retrieval eval (offline)
 
 eval-ragas: ## Run the Ragas eval -> Langfuse (needs GROQ_API_KEY)
 	cd $(API_DIR) && python -m atlas.eval.ragas_eval
+
+eval-baseline: ## Compare the simple RAG baseline vs Atlas over the golden set (needs GROQ_API_KEY)
+	cd $(API_DIR) && python -m atlas.eval.compare $(if $(LIMIT),--limit $(LIMIT),)
 
 up: ## Start infra (Qdrant + Langfuse) and the API
 	docker compose up -d qdrant langfuse api
