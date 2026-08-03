@@ -224,6 +224,28 @@ live), and plain `.txt`/`.md`. The binary is never indexed directly; an unreadab
 scanned, or encrypted file is rejected with a message rather than silently poisoning
 retrieval with garbage.
 
+## Evaluation layer (is the answer actually right?)
+
+```
+run output ─┬─► claim-level citation verification   core/llmops/claim_verify.py
+            │     each claim vs its cited evidence → supported / partial / unsupported
+            │     (deterministic figures+overlap first; LLM judge only if ambiguous)
+            │     → citation_coverage = supported / total claims
+            │     → citation_correctness = supported / cited claims
+            │
+            ├─► per-agent eval          core/llmops/agent_eval.py   (which specialist was weak)
+            │
+            └─► push to Langfuse        ragas_* · citation_coverage · citation_correctness
+
+GOLDEN SET   data/golden/golden.jsonl  — version-controlled, categorized, no fabricated
+             ground truth (behavioural cases carry verifiable=false)
+
+BASELINE vs ATLAS   eval/baseline.py (retrieve → single LLM) scored by the SAME
+                    evaluator as Atlas → eval/compare.py reports side-by-side averages
+                    + win counts (faithfulness, coverage, correctness, latency).
+                    Answers "does the architecture measurably help?" — make eval-baseline
+```
+
 ## Storage design
 
 Two stores, each chosen for what it is good at.

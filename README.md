@@ -220,6 +220,22 @@ docs/                  architecture + deployment runbook
 CLAUDE.md              architecture, stack, conventions, milestones
 ```
 
+## 🔬 Evaluation & evidence-auditability
+
+Atlas is built to answer *"how do I know this is right?"*, not just produce an answer:
+
+- **Provenance / trust tiers** — every chunk is `authoritative` / `web` / `derived`. Atlas's own consolidated memory is tagged `atlas_derived`, ranked below real sources, and marked in citations — so the summarizer can never quietly feed its own past output back as evidence (`core/rag/provenance.py`).
+- **Claim-level citation verification** — grounding is checked per claim (*does the cited evidence actually support it?* → supported / partial / unsupported), deterministic-first with an LLM judge only for ambiguous cases. Yields **`citation_coverage`** (supported / total claims) and **`citation_correctness`** (supported / cited) — claim-level, not a count of citation markers.
+- **Per-agent evaluation** — each specialist is scored individually, so a weak run attributes to a *specific* agent.
+- **Version-controlled golden set** — `data/golden/golden.jsonl`: 23 cases across categories (fundamentals, competitor, risk, news, ambiguous, requires-web, entity-confusion, citation-grounding). Verifiable answers come from the corpus; behavioural cases carry **no fabricated ground truth**.
+- **Baseline vs Atlas** — a simple *retrieve → single-LLM* baseline scored by the **same** evaluator, so you can measure whether the multi-agent + debate + verification architecture actually improves quality rather than just adding complexity:
+
+```bash
+make eval-baseline        # or: python -m atlas.eval.compare --limit N   (needs GROQ_API_KEY)
+```
+
+All metrics push to Langfuse (`ragas_*`, `citation_coverage`, `citation_correctness`).
+
 ## 🧪 Testing
 
 The suite is **fully offline and hermetic** — a `conftest.py` forces `ATLAS_OFFLINE_LLM` and `ATLAS_OFFLINE_EMBED`, so **no API keys or network are needed** (CI-friendly):
