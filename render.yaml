@@ -18,10 +18,15 @@ services:
       # Required — paste your Groq key in the Render dashboard (kept secret).
       - key: GROQ_API_KEY
         sync: false
-      # Set this to your Vercel URL after the frontend deploys, e.g.
-      # https://atlas-yourname.vercel.app  (comma-separate multiple origins).
+      # The Vercel frontend origin allowed to call this API.
       - key: CORS_ORIGINS
-        sync: false
+        value: "https://atlas-web-lake.vercel.app"
+      # The free tier (512 MB) can't hold the neural bge embedder + cross-encoder
+      # reranker (they OOM-crash the container). This flag switches retrieval to the
+      # lightweight BM25 + hashing path. The Groq LLM reasoning is unchanged; the full
+      # neural pipeline still runs locally / on a larger instance (flag off).
+      - key: ATLAS_OFFLINE_EMBED
+        value: "1"
       # SEC EDGAR asks for a contact string in the User-Agent header.
       - key: SEC_EDGAR_USER_AGENT
         value: "atlas-research harithota609@gmail.com"
