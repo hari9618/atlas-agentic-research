@@ -4,6 +4,7 @@
 
 **A team of specialist AI agents that research a company, _debate each other (bull vs. bear)_, ground every claim in retrieved evidence, and deliver an investor-grade report — with citations, a confidence score, and an honest "what we're NOT sure about" section.**
 
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-atlas--web--lake.vercel.app-000000?logo=vercel&logoColor=white)](https://atlas-web-lake.vercel.app)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-multi--agent-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
 [![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?logo=meta&logoColor=white)](https://console.groq.com/)
