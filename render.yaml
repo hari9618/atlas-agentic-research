@@ -1,0 +1,27 @@
+# Render Blueprint for the Atlas backend (FastAPI).
+# The Next.js frontend deploys separately on Vercel (root dir: apps/web).
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: atlas-api
+    runtime: python
+    plan: free
+    rootDir: apps/api
+    # Install the package (and its deps) from apps/api/pyproject.toml.
+    buildCommand: pip install --upgrade pip && pip install -e .
+    # Render provides $PORT; bind to it and to all interfaces.
+    startCommand: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # Required — paste your Groq key in the Render dashboard (kept secret).
+      - key: GROQ_API_KEY
+        sync: false
+      # Set this to your Vercel URL after the frontend deploys, e.g.
+      # https://atlas-yourname.vercel.app  (comma-separate multiple origins).
+      - key: CORS_ORIGINS
+        sync: false
+      # SEC EDGAR asks for a contact string in the User-Agent header.
+      - key: SEC_EDGAR_USER_AGENT
+        value: "atlas-research harithota609@gmail.com"
