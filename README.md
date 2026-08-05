@@ -20,6 +20,17 @@ _Real multi-agent orchestration · agentic hybrid RAG · MCP tools · end-to-end
 
 ---
 
+## 🚀 Live demo
+
+**[atlas-web-lake.vercel.app](https://atlas-web-lake.vercel.app)** — the full war-room UI, live.
+
+> Try: _"What are the main risks for Helios Robotics?"_ (sample data is pre-loaded), or clear the
+> knowledge base and upload your own PDFs. The first request may take **~50 s** while the free-tier
+> backend wakes from sleep. The public demo runs a lightweight retrieval profile to fit free
+> infrastructure — the full neural pipeline runs locally (see [Deployment](docs/architecture.md#deployment)).
+
+---
+
 ## 🎯 What it does
 
 Ask Atlas a question like _"Should I worry about Company X as a competitor?"_ and instead of a single, unverifiable LLM answer, Atlas runs a **whole desk of AI analysts**:

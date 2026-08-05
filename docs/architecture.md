@@ -262,6 +262,55 @@ may be absent. The trade-off is that recall is a linear numpy scan rather than a
 indexed ANN search — fine at this scale, and the point where a dedicated memory
 collection would start to pay off.
 
+## Deployment
+
+Atlas runs locally with the full neural stack. The public demo runs on free tiers, which
+trades retrieval depth for zero cost — **the application code is identical**; a single env
+flag (`ATLAS_OFFLINE_EMBED`) switches the retrieval profile.
+
+```
+  Browser
+     │  https://atlas-web-lake.vercel.app
+     ▼
+  Next.js frontend          VERCEL   (static + edge, root dir apps/web)
+     │  fetch NEXT_PUBLIC_API_URL   (CORS-scoped to the Vercel origin)
+     ▼
+  FastAPI backend           RENDER   (free web service, 512 MB, blueprint render.yaml)
+     • Groq LLM (cloud API) — all reasoning, unchanged
+     • SQLite (ephemeral)   — episodic memory + LangGraph checkpointer
+     • Qdrant unreachable   → in-memory vector store (graceful fallback)
+     • Langfuse optional    → keys unset on the demo (traces off; on locally)
+```
+
+**Retrieval profile — the only thing the free tier changes:**
+
+| | Local / ≥2 GB instance | Render free tier (demo) |
+|---|---|---|
+| `ATLAS_OFFLINE_EMBED` | `0` (default) | `1` |
+| Dense embeddings | bge-small (neural, semantic) | hashing (numpy, lexical) |
+| Cross-encoder re-rank | ✓ | skipped |
+| BM25 keyword | ✓ | ✓ |
+| Agents · debate · synthesis · citations · guardrail | ✓ identical | ✓ identical |
+
+The 512 MB free instance OOM-crashes while loading the bge + cross-encoder models, so the
+demo sets `ATLAS_OFFLINE_EMBED=1` — a lexical-first retrieval path that fits in memory. The
+Groq LLM still does every bit of reasoning, so answers to keyword-shaped questions (which
+name the company, product, or figure) are essentially unchanged; the neural path mainly
+helps on semantic/paraphrase queries. Turn the flag off (local, or a ≥2 GB instance / Cloud
+Run) to get the full hybrid pipeline described above.
+
+**Config (no secrets in git):**
+
+- **Frontend** — `NEXT_PUBLIC_API_URL` → the Render backend URL (baked at build time).
+- **Backend** — `GROQ_API_KEY` (secret), `CORS_ORIGINS` → the Vercel origin,
+  `ATLAS_OFFLINE_EMBED=1`; optional `LANGFUSE_*` / `TAVILY_API_KEY` enable tracing / web fallback.
+- **Blueprints** — `render.yaml` (backend service + env) · Vercel project with root `apps/web`.
+
+Cold start: the free backend sleeps after ~15 min idle; the next request wakes it (~50 s).
+Fire one warm-up query before a live demo.
+
+---
+
 ## Code map
 
 | Part | File |
