@@ -25,6 +25,16 @@ def test_status_reports_the_indexed_corpus():
     assert body["chunk_count"] >= 0
 
 
+def test_clear_empties_the_knowledge_base():
+    # Add something, then clear — the index should end empty and searchable-free.
+    client.post("/corpus/text", json={"title": "Temp Doc For Clear", "text": LONG_TEXT})
+    assert client.get("/corpus/status").json()["chunk_count"] > 0
+
+    r = client.delete("/corpus")
+    assert r.status_code == 200 and r.json()["cleared"] is True
+    assert client.get("/corpus/status").json()["chunk_count"] == 0
+
+
 def test_add_text_indexes_a_document():
     r = client.post(
         "/corpus/text",

@@ -81,6 +81,24 @@ async def status() -> dict:
     }
 
 
+@router.delete("")
+async def clear_corpus() -> dict:
+    """Empty the knowledge base so only newly uploaded documents are searchable.
+
+    Useful for a clean run: the app seeds a small sample corpus on startup, and this
+    clears it (and anything ingested since) back to empty.
+    """
+    from ..core.graph import get_index
+
+    def _clear() -> int:
+        index = get_index()
+        index.clear()
+        return len(index.chunks)
+
+    remaining = await run_in_threadpool(_clear)
+    return {"cleared": True, "chunk_count": remaining}
+
+
 @router.post("/text")
 async def add_text(req: TextRequest) -> dict:
     """Ingest pasted text (a report, a profile, notes)."""

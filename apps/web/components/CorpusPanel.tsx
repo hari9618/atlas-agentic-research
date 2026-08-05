@@ -75,6 +75,21 @@ export function CorpusPanel() {
     setTicker("");
   };
 
+  const onClear = async () => {
+    if (!window.confirm("Clear the knowledge base? This removes all indexed documents.")) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await fetch(`${API}/corpus`, { method: "DELETE" });
+      setMsg({ ok: true, text: "Knowledge base cleared. Upload the documents you want to analyze." });
+      refresh();
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not clear." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
       <div className="flex items-center justify-between gap-3">
@@ -144,13 +159,25 @@ export function CorpusPanel() {
           )}
 
           {status && status.documents.length > 0 && (
-            <ul className="max-h-32 space-y-1 overflow-y-auto text-xs text-slate-400">
-              {status.documents.map((d) => (
-                <li key={d.doc_id} className="truncate">
-                  📄 {d.title}
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500">Currently indexed</span>
+                <button
+                  onClick={onClear}
+                  disabled={busy}
+                  className="rounded-md border border-red-800/60 px-2.5 py-1 text-xs font-medium text-red-300 transition hover:border-red-500 hover:text-red-200 disabled:opacity-50"
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className="max-h-32 space-y-1 overflow-y-auto text-xs text-slate-400">
+                {status.documents.map((d) => (
+                  <li key={d.doc_id} className="truncate">
+                    📄 {d.title}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       )}
