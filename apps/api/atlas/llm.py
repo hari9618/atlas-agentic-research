@@ -43,4 +43,9 @@ def get_llm(temperature: float | None = None, model: str | None = None) -> ChatG
         model=model_name,
         temperature=temp,
         max_tokens=settings.llm_max_tokens,
+        # The free tier caps tokens-per-minute (8k on gpt-oss-120b) and the four
+        # specialists fire in parallel, so bursts hit a 429. Groq returns a
+        # Retry-After; these retries back off and let the run finish reliably.
+        max_retries=8,
+        request_timeout=60,
     )

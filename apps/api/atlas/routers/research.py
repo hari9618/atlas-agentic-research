@@ -8,6 +8,7 @@ output is emitted as it completes, so the frontend can light up the agent graph 
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -18,6 +19,7 @@ from ..config import get_settings
 from ..core.graph import research, run_research
 
 router = APIRouter(prefix="/research", tags=["research"])
+log = logging.getLogger("atlas.research")
 
 
 class ResearchRequest(BaseModel):
@@ -30,12 +32,15 @@ async def research_sync(req: ResearchRequest) -> dict:
     if not get_settings().llm_configured:
         return {"error": "GROQ_API_KEY not configured", "report": "", "confidence": None}
     try:
-        result = await run_in_threadpool(research, req.query, thread_id=req.thread_id)
-        return result
-    except Exception as e:  # temporary: surface the real error instead of a bare 500
-        import traceback
-
-        return {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-2200:]}
+        return await run_in_threadpool(research, req.query, thread_id=req.thread_id)
+    except Exception as e:  # degrade gracefully instead of a bare 500
+        log.warning("research run failed: %s", e)
+        return {
+            "error": "The research run hit a transient error (often the free-tier "
+            "rate limit). Please try again in a few seconds.",
+            "report": "",
+            "confidence": None,
+        }
 
 
 @router.get("/stream")
