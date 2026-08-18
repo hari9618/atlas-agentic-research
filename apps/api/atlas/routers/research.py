@@ -29,8 +29,13 @@ class ResearchRequest(BaseModel):
 async def research_sync(req: ResearchRequest) -> dict:
     if not get_settings().llm_configured:
         return {"error": "GROQ_API_KEY not configured", "report": "", "confidence": None}
-    result = await run_in_threadpool(research, req.query, thread_id=req.thread_id)
-    return result
+    try:
+        result = await run_in_threadpool(research, req.query, thread_id=req.thread_id)
+        return result
+    except Exception as e:  # temporary: surface the real error instead of a bare 500
+        import traceback
+
+        return {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-2200:]}
 
 
 @router.get("/stream")
