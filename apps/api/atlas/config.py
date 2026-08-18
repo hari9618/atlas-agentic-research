@@ -27,9 +27,12 @@ class Settings(BaseSettings):
 
     # ---- LLM (Groq) ----
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    # Groq decommissioned the Llama 3.3/3.1 models (Aug 2026); moved to the
+    # recommended GPT-OSS replacements. Reasoning stays in a separate field, so
+    # report content comes back clean.
+    groq_model: str = "openai/gpt-oss-120b"
     # cheaper/faster model for the memory summarizer (consolidation)
-    summarizer_model: str = "llama-3.1-8b-instant"
+    summarizer_model: str = "openai/gpt-oss-20b"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2048
 
