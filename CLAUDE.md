@@ -37,7 +37,7 @@ Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-ch
 | Layer | Choice |
 |---|---|
 | Orchestration | **LangGraph** (supervisor + specialist subgraphs, SQLite checkpointer for shared state) |
-| LLM | **Groq · Llama 3.3 70B** (`llama-3.3-70b-versatile`) via `langchain-groq` |
+| LLM | **Groq · GPT-OSS-120B** (`openai/gpt-oss-120b`) via `langchain-groq` |
 | RAG | LangChain hybrid: **BM25Retriever + bge-small (EnsembleRetriever/RRF)** → **CrossEncoderReranker** → **CRAG** loop, **Qdrant**/InMemory |
 | Embeddings | `BAAI/bge-small-en-v1.5` (free, local via sentence-transformers) |
 | Tools | **MCP** server exposing web_search / sec_edgar / stock_data / company_news |

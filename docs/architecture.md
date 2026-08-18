@@ -138,7 +138,7 @@ distinct ingestion path that runs *before* any question is asked.
 │  ⑥ REMEMBER                   core/memory/episodic.py        │
 │  • save run → SQLite: question, report, confidence, findings  │
 │    + the question's embedding, computed once here             │
-│  • summarizer (Llama 3.1 8B) distills → semantic facts,       │
+│  • summarizer (GPT-OSS-20B) distills → semantic facts,        │
 │    written into the same corpus index                         │
 │                                core/memory/summarizer.py      │
 │    → next run's step ① recalls this                          │
@@ -347,4 +347,4 @@ Fire one warm-up query before a live demo.
 | Synthesizer (report) | 0.3 | Clear writing, still grounded |
 | Synthesizer (scores) | 0.0 | Deterministic — a score must not change on re-run |
 
-**Model:** Groq · Llama 3.3 70B (main) · Llama 3.1 8B (cheap summarizer)
+**Model:** Groq · GPT-OSS-120B (main) · GPT-OSS-20B (cheap summarizer)

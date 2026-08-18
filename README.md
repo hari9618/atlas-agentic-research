@@ -7,7 +7,7 @@
 [![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-atlas--web--lake.vercel.app-000000?logo=vercel&logoColor=white)](https://atlas-web-lake.vercel.app)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-multi--agent-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
-[![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?logo=meta&logoColor=white)](https://console.groq.com/)
+[![Groq](https://img.shields.io/badge/Groq-GPT--OSS--120B-F55036)](https://console.groq.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-SSE_streaming-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-war--room_UI-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-vector_db-DC244C?logo=qdrant&logoColor=white)](https://qdrant.tech/)
@@ -156,7 +156,7 @@ run research ─▶ evaluate (Ragas) ─▶ gate ──pass──▶ ✅ release
 | Layer | Choice |
 |---|---|
 | **Orchestration** | LangGraph (supervisor + specialist nodes, SQLite checkpointer) |
-| **LLM** | Groq · Llama 3.3 70B (`llama-3.3-70b-versatile`); 8B (`llama-3.1-8b-instant`) for cheap ops tasks |
+| **LLM** | Groq · GPT-OSS-120B (`openai/gpt-oss-120b`); GPT-OSS-20B (`openai/gpt-oss-20b`) for cheap ops tasks |
 | **RAG** | LangChain hybrid: `BM25Retriever` + `bge-small-en-v1.5` (EnsembleRetriever/RRF) → `CrossEncoderReranker` → CRAG · Qdrant/InMemory |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` — free, local (sentence-transformers) |
 | **Memory** | Episodic (SQLite + embeddings) · Procedural (playbook files) · Summarizer agent |
