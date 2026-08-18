@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     # cheaper/faster model for the memory summarizer (consolidation)
     summarizer_model: str = "openai/gpt-oss-20b"
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 2048
+    # Kept modest so a full multi-agent run stays within Groq's free-tier
+    # tokens-per-minute budget (reports need ~500 tokens; this leaves reasoning room).
+    llm_max_tokens: int = 1024
 
     # ---- Memory ----
     memory_consolidate_every: int = 3  # run the summarizer after every N episodes
