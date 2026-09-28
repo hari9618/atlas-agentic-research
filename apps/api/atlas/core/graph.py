@@ -133,14 +133,30 @@ def get_graph():
 
 def run_research(query: str, *, thread_id: str = "default"):
     """Generator of {event, data} updates per node, ending with a 'final' event."""
+    from ..observability import langchain_callbacks  # lazy: keeps import graph clean
+
     graph = get_graph()
-    config = {"configurable": {"thread_id": thread_id}}
+    # Attach the Langfuse handler at the *graph* level so the whole run is ONE trace
+    # tree (named "atlas_research_run") with every agent/tool call nested underneath —
+    # token usage, cost and latency then roll up per run instead of scattering across
+    # dozens of separate traces. The special ``langfuse_*`` metadata keys group runs
+    # into a session and tag them so they're easy to find on the dashboard.
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "callbacks": langchain_callbacks(),
+        "run_name": "atlas_research_run",
+        "metadata": {
+            "langfuse_session_id": thread_id,
+            "langfuse_tags": ["atlas", "research_run"],
+            "atlas_query": query,
+        },
+    }
     yield {"event": "start", "data": {"query": query}}
     for chunk in graph.stream({"query": query}, config=config, stream_mode="updates"):
         for node, update in chunk.items():
             yield {"event": node, "data": update or {}}
     final = graph.get_state(config).values
-    yield {"event": "final", "data": {
+    result = {
         "report": final.get("report", ""),
         "confidence": final.get("confidence"),
         "uncertainties": final.get("uncertainties", []),
@@ -148,7 +164,30 @@ def run_research(query: str, *, thread_id: str = "default"):
         "findings": final.get("findings", []),
         "debate": final.get("debate", []),
         "plan": final.get("plan", []),
-    }}
+    }
+    yield {"event": "final", "data": result}
+    # After the report has streamed to the user, auto-evaluate the run and push the
+    # Ragas-schema scores to Langfuse (faithfulness / answer-relevancy / citation
+    # coverage). Best-effort: a scoring hiccup must never fail the research run.
+    _score_run(query, result)
+
+
+def _score_run(query: str, result: dict) -> None:
+    """Per-run automatic eval → push scores to Langfuse. Never raises."""
+    if not (result.get("report") and get_settings().llm_configured):
+        return
+    try:
+        from .llmops.evaluate import evaluate_run
+
+        scores = evaluate_run(query, result, push=True)
+        log.info(
+            "Run scored → faithfulness=%.3f relevancy=%.3f overall=%.3f (pushed to Langfuse)",
+            scores.get("faithfulness", 0.0),
+            scores.get("relevancy", 0.0),
+            scores.get("overall", 0.0),
+        )
+    except Exception as exc:  # pragma: no cover - scoring is best-effort
+        log.warning("Per-run scoring/push failed (non-fatal): %s", exc)
 
 
 def research(query: str, *, thread_id: str = "default") -> dict:

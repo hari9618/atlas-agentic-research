@@ -18,6 +18,15 @@ services:
       # Required — paste your Groq key in the Render dashboard (kept secret).
       - key: GROQ_API_KEY
         sync: false
+      # Observability — Langfuse tracing, token/cost, and per-run Ragas scores.
+      # Paste the pk-lf-… / sk-lf-… keys in the Render dashboard (kept secret).
+      # Without these the deployed backend runs but records NOTHING to Langfuse.
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_HOST
+        value: "https://us.cloud.langfuse.com"
       # The Vercel frontend origin allowed to call this API.
       - key: CORS_ORIGINS
         value: "https://atlas-web-lake.vercel.app"
