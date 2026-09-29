@@ -48,16 +48,14 @@ def _client() -> Any | None:
 
 
 def derive_scores(metrics: dict[str, float]) -> dict[str, float]:
-    """Add the derived scores (hallucination, alert_count) the dashboard expects."""
-    out = dict(metrics)
-    if "ragas_faithfulness" in metrics:
-        out["ragas_hallucination"] = round(1.0 - metrics["ragas_faithfulness"], 4)
-    alerts = sum(
-        1 for name, thr in ALERT_THRESHOLDS.items()
-        if name in metrics and metrics[name] < thr
-    )
-    out["ragas_alert_count"] = float(alerts)
-    return out
+    """Return the metrics as-is.
+
+    Previously this also emitted ``ragas_hallucination`` (= 1 - faithfulness) and
+    ``ragas_alert_count`` — but those cluttered the dashboard with numbers that
+    duplicate faithfulness or read as cryptic. We push only the metrics we're given,
+    so the Scores panel stays small and human-readable.
+    """
+    return dict(metrics)
 
 
 def push_item_scores(

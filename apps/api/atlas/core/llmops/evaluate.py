@@ -62,7 +62,10 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
     from .agent_eval import evaluate_agents
     from .claim_verify import verify_claims
 
-    agents = evaluate_agents(findings, query=query, push=push)
+    # Per-agent scores stay internal (used by the self-improvement loop to find the
+    # weakest specialist) — we no longer push them to Langfuse, to keep the Scores
+    # panel small and readable. push=False.
+    agents = evaluate_agents(findings, query=query, push=False)
     # Claim-level citation verification (Phase 3/4): does each cited claim's evidence
     # actually support it? Deterministic-first, so this runs even offline.
     claims = verify_claims(findings)
@@ -85,12 +88,15 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
         try:
             from ...eval.langfuse_scores import flush, push_item_scores
 
+            # A small, human-readable set: is it grounded (faithfulness), does it
+            # answer the question (answer_relevancy), are claims cited
+            # (citation_coverage), and the blended overall.
             push_item_scores(
                 {
                     "ragas_faithfulness": faithfulness,
                     "ragas_answer_relevancy": relevancy,
                     "citation_coverage": claims["citation_coverage"],
-                    "citation_correctness": claims["citation_correctness"],
+                    "overall": overall,
                 },
                 question=query,
                 answer=report[:500],
