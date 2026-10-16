@@ -53,12 +53,32 @@ def synthesize_node(state: ResearchState) -> dict:
     )
 
     report = chat(
-        f"Write an investor-grade due-diligence brief answering:\n\"{query}\"\n\n"
+        f"Write a clear, plain-English due-diligence briefing answering:\n\"{query}\"\n\n"
         f"FINDINGS (cite these inline using their bracketed labels):\n{findings_block}\n\n"
         f"DEBATE:\n{debate_block}\n\n"
-        "Structure: ## Verdict, ## Key Findings (with inline citations), ## Bull vs Bear, "
-        "## Risks, ## What we're NOT sure about. Be concise and only assert what the "
-        "findings support.",
+        "Write for a busy, non-technical business reader. Use EXACTLY these markdown H2 "
+        "sections, in this order. Keep each to 2-4 short sentences or a few short bullet "
+        "points. Do NOT use markdown tables — plain sentences and bullets only.\n\n"
+        "## Verdict\n"
+        "One sentence: the answer to the question and the overall leaning (positive / "
+        "neutral / cautious).\n\n"
+        "## Business & Revenue\n"
+        "How the company is doing financially — revenue, growth rate, momentum — in plain words.\n\n"
+        "## What They Offer\n"
+        "The main products or services they provide to their customers.\n\n"
+        "## Competitors & Market Position\n"
+        "Who they compete with, where they are strong, and where they are lagging.\n\n"
+        "## Recent News & Sentiment\n"
+        "The latest notable events and the overall mood (positive or negative).\n\n"
+        "## Key Risks\n"
+        "The main risks, stated plainly.\n\n"
+        "## Bull vs Bear\n"
+        "One bullet for the optimistic case, one bullet for the cautious case.\n\n"
+        "## Bottom Line\n"
+        "A 2-3 sentence plain-English summary a reader can act on.\n\n"
+        "Rules: cite evidence inline using the bracketed labels; only assert what the "
+        "findings support; if a section has no supporting evidence, write 'Not enough "
+        "evidence yet.' Keep it concise and jargon-free.",
         system=system_prompt,
         temperature=0.3, run_name="synthesizer.report",
     )
