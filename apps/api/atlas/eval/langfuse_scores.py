@@ -73,13 +73,19 @@ def push_item_scores(
     try:
         trace = client.trace(name=trace_name, input=question, output=answer)
         for name, value in scores.items():
-            trace.score(name=name, value=float(value))
+            if isinstance(value, str):  # categorical (e.g. quality = good/ok/poor)
+                trace.score(name=name, value=value, data_type="CATEGORICAL")
+            else:
+                trace.score(name=name, value=float(value))
         return getattr(trace, "id", None)
     except Exception as exc:  # pragma: no cover - SDK version drift
         # Fall back to the flat score API (older/newer SDKs).
         try:
             for name, value in scores.items():
-                client.score(name=name, value=float(value))
+                if isinstance(value, str):
+                    client.score(name=name, value=value, data_type="CATEGORICAL")
+                else:
+                    client.score(name=name, value=float(value))
             return None
         except Exception:
             log.warning("Failed to push scores to Langfuse: %s", exc)
