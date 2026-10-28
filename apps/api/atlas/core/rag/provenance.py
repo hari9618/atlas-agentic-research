@@ -12,10 +12,12 @@ wrong earlier output can be retrieved back as if it were evidence.
 
 Tiers, most to least trusted for grounding a final claim:
 
-* **AUTHORITATIVE** - ingested primary sources (SEC filings, uploads, curated corpus,
-  news/market docs). Citable as primary support.
-* **WEB** - live web search hits: external, unvetted. Citable, but ranked below
-  authoritative and visibly marked.
+* **AUTHORITATIVE** - ingested primary sources (SEC filings incl. the live
+  ``sec_edgar`` tool, uploads, curated corpus). Citable as primary support.
+* **WEB** - live third-party data pulled at run time: web search hits, the
+  ``company_news`` feed and ``stock_data`` quotes. External/unvetted (or a single
+  data point with no filing behind it), so citable but ranked below authoritative
+  and visibly marked.
 * **DERIVED** - Atlas's own consolidated memory (``atlas_derived``). Useful as
   context, never primary support; always visibly marked.
 
@@ -36,7 +38,7 @@ class TrustTier(str, Enum):
 # Sources that are Atlas's own output or external/unvetted. Everything else is an
 # ingested primary source and defaults to AUTHORITATIVE.
 _DERIVED_SOURCES = {"atlas_derived", "memory"}
-_WEB_SOURCES = {"web_search", "web"}
+_WEB_SOURCES = {"web_search", "web", "company_news", "stock_data"}
 
 # Visible markers appended to a citation so a reader (and the guardrail) can tell a
 # derived or web citation from an authoritative one at a glance.

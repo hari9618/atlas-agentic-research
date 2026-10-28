@@ -27,22 +27,20 @@ _SERVER = StdioServerParameters(
 
 
 async def _alist_tools() -> list[dict[str, Any]]:
-    async with stdio_client(_SERVER) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            resp = await session.list_tools()
-            return [{"name": t.name, "description": (t.description or "").split("\n")[0]}
-                    for t in resp.tools]
+    async with stdio_client(_SERVER) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        resp = await session.list_tools()
+        return [{"name": t.name, "description": (t.description or "").split("\n")[0]}
+                for t in resp.tools]
 
 
 async def _acall_tool(name: str, arguments: dict[str, Any]) -> Any:
-    async with stdio_client(_SERVER) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(name, arguments=arguments)
-            # MCP returns content parts; surface the text payload.
-            parts = [c.text for c in result.content if getattr(c, "type", "") == "text"]
-            return "\n".join(parts) if parts else result.content
+    async with stdio_client(_SERVER) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        result = await session.call_tool(name, arguments=arguments)
+        # MCP returns content parts; surface the text payload.
+        parts = [c.text for c in result.content if getattr(c, "type", "") == "text"]
+        return "\n".join(parts) if parts else result.content
 
 
 def list_tools() -> list[dict[str, Any]]:

@@ -17,6 +17,7 @@ from ...config import get_settings
 from ...llm import get_llm
 from ...observability import langchain_callbacks
 from ..rag.types import RetrievedChunk
+from ..resilience import LLM_ATTEMPTS, retry_call
 
 log = logging.getLogger("atlas.agents")
 
@@ -33,14 +34,20 @@ def llm_ready() -> bool:
 
 
 def chat(prompt: str, *, system: str | None = None, temperature: float = 0.2,
-         run_name: str = "agent") -> str:
-    """One traced LLM turn. Raises if no key — guard with llm_ready() first."""
-    llm = get_llm(temperature=temperature)
+         run_name: str = "agent", max_tokens: int | None = None) -> str:
+    """One traced LLM turn. Raises if no key — guard with llm_ready() first.
+
+    Transient failures (429 / timeout / 5xx) that survive the SDK's own retries get
+    ``LLM_ATTEMPTS`` outer attempts with backoff (see ``atlas.core.resilience``);
+    anything else propagates so the calling node can degrade.
+    """
+    llm = get_llm(temperature=temperature, max_tokens=max_tokens)
     msgs: list = []
     if system:
         msgs.append(SystemMessage(content=system))
     msgs.append(HumanMessage(content=prompt))
-    resp = llm.invoke(msgs, config={"callbacks": langchain_callbacks(), "run_name": run_name})
+    config = {"callbacks": langchain_callbacks(), "run_name": run_name}
+    resp = retry_call(llm.invoke, msgs, config=config, attempts=LLM_ATTEMPTS, label=run_name)
     return (resp.content if hasattr(resp, "content") else str(resp)).strip()
 
 

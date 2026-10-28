@@ -113,4 +113,4 @@ def test_specialists_pass_the_web_fallback():
     from atlas.core.agents import specialists
 
     src = inspect.getsource(specialists)
-    assert "web_fallback=web_evidence" in src
+    assert "web_fallback=web_evidence_about(" in src  # entity-scoped web fallback

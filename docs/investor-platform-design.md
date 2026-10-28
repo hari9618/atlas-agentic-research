@@ -97,7 +97,11 @@ Rules:
 | `review_status` | str | `pending`, `approved`, `revision_requested`, `auto_approved` |
 | `feedback` | str | latest reviewer feedback |
 | `revision` | int | 0 for the first draft, +1 per requested change |
-| `review_history` | list[dict] (reducer `operator.add`) | `{revision, action, feedback}` |
+| `review_history` | list[dict] (additive reducer) | `{revision, action, feedback}` |
+
+`findings`, `debate` and `review_history` use `add_or_reset` (`state.py`): `operator.add`
+semantics, except an explicit `None` update clears the list. `run_research` sends `None`
+at the start of every run so a reused thread id never leaks the previous run's findings.
 
 ## 3. Graph
 
@@ -132,11 +136,27 @@ Starts a run. `review=1` pauses for review (default for the web UI). Events:
 | `<node>` | that node's state update (`recall`, `supervisor`, `fundamentals`, `news_sentiment`, `risk`, `market`, `debate_round`, `synthesize`, `revise_research`, `remember`) |
 | `review_required` | `ResearchPayload` + `{thread_id, revision}` — the run is paused |
 | `final` | `ResearchPayload` + `{thread_id, revision, review_status}` — the run is complete |
-| `error` | `{error}` — friendly message |
+| `error` | `{error, code}` — friendly message + machine-readable code (see below) |
 
 ### `GET /research/resume?thread_id=<id>&action=approve|revise&feedback=<text>`
-Resumes a paused run. Emits the same events and ends with another `review_required`
+Resumes a paused run (`feedback` required for `revise`, max 2000 chars). Emits the
+same events and ends with another `review_required`
 (new draft) or `final`.
+
+### Errors on the GET streams
+`EventSource` cannot read the body of a non-200 response, so the GET stream endpoints
+never answer bad input or a bad thread state with a 4xx. They return **200** with an SSE
+stream carrying exactly one `error` event, then close:
+
+| `code` | when |
+|---|---|
+| `bad_request` | empty / too-short (<3) / too-long (>500) query; bad `review` flag; missing or bad `thread_id`; `action` not in {approve, revise}; `revise` without feedback; feedback > 2000 chars |
+| `unknown_thread` | resume on a thread id with no checkpoint (never existed or expired) |
+| `not_paused` | resume on a thread that exists but is not waiting for review (already finished) |
+| `not_configured` | no `GROQ_API_KEY` on the server |
+| `run_failed` | the run failed mid-stream (after retries/degradation) |
+
+`POST /research/sync` keeps normal JSON error behaviour.
 
 ### `POST /research/sync`  (unchanged contract)
 Runs to completion with review off. Response is `ResearchPayload`.
@@ -153,6 +173,7 @@ Runs to completion with review off. Response is `ResearchPayload`.
   debate: {role: string; text: string; leaning?: string}[];
   plan: string[];
   target?: string;
+  review_history: {revision: number; action: string; feedback: string}[];  // change history
 }
 ```
 

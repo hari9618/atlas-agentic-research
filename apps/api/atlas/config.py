@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     # Kept modest so a full multi-agent run stays within Groq's free-tier
     # tokens-per-minute budget (reports need ~500 tokens; this leaves reasoning room).
     llm_max_tokens: int = 1024
+    # The synthesizer writes the full structured investor brief (JSON with ~15
+    # sections) and GPT-OSS spends part of the budget on reasoning, so it gets a
+    # larger, separate budget. It runs alone after the parallel burst, so it fits TPM.
+    synth_max_tokens: int = 3500
+
+    # ---- Human review ----
+    max_revisions: int = 3  # cap the human-feedback → regenerate loop
+
+    # ---- Persistence ----
+    # Postgres for durable checkpoints / episodic memory / prompt registry. Empty →
+    # local SQLite (fine for dev/tests; ephemeral on hosts like Render's free tier).
+    database_url: str = ""
 
     # ---- Memory ----
     memory_consolidate_every: int = 3  # run the summarizer after every N episodes

@@ -33,8 +33,16 @@ def _strip_html(html: str) -> str:
     return _WS.sub(" ", text).strip()
 
 
+def _get(client: httpx.Client, url: str) -> httpx.Response:
+    """GET that raises on HTTP errors, so EDGAR throttling (429/5xx) is visible to the
+    retry layer instead of surfacing later as a confusing JSON decode error."""
+    resp = client.get(url, headers=_headers())
+    resp.raise_for_status()
+    return resp
+
+
 def _cik_for_ticker(client: httpx.Client, ticker: str) -> str | None:
-    data = client.get(_TICKERS_URL, headers=_headers()).json()
+    data = _get(client, _TICKERS_URL).json()
     for row in data.values():
         if row["ticker"].upper() == ticker.upper():
             return f"{int(row['cik_str']):010d}"
@@ -50,7 +58,7 @@ def fetch_latest_filing(
         if not cik:
             log.warning("No CIK found for ticker %s", ticker)
             return None
-        subs = client.get(_SUBMISSIONS.format(cik=cik), headers=_headers()).json()
+        subs = _get(client, _SUBMISSIONS.format(cik=cik)).json()
         recent = subs["filings"]["recent"]
         for i, ftype in enumerate(recent["form"]):
             if ftype != form:
@@ -62,7 +70,7 @@ def fetch_latest_filing(
             url = _ARCHIVE.format(
                 cik_int=int(cik), acc_nodash=acc.replace("-", ""), doc=primary
             )
-            html = client.get(url, headers=_headers()).text
+            html = _get(client, url).text
             text = _strip_html(html)[:max_chars]
             company = subs.get("name", ticker)
             return Document(
