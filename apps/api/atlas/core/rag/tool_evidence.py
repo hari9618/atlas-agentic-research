@@ -136,13 +136,39 @@ def news_evidence(company: str, *, ticker: str = "",
     return out
 
 
+# Competitor-search chunks are numbered from here so their citation keys can't
+# collide with the CRAG web fallback's web_search#0..#3 inside the same analyst.
+_COMPETITOR_ORDINAL_START = 10
+
+
+def competitor_evidence(company: str, *, ticker: str = "",
+                        max_results: int = 4) -> list[RetrievedChunk]:
+    """Web results that NAME the company's rivals.
+
+    General market searches return SWOT-style pages that discuss "intense competition"
+    without naming anyone, and the writer (rightly) never invents names — leaving the
+    competitors section empty for real companies. A direct "top competitors" search
+    surfaces pages that list rivals; they still pass the entity guard.
+    """
+    if _offline() or not company:
+        return []
+    from .web_evidence import web_evidence
+
+    chunks = web_evidence(f"{company} top competitors and main rivals",
+                          max_results=max_results, entity=entity_terms(company, ticker))
+    for i, c in enumerate(chunks):
+        c.chunk.ordinal = _COMPETITOR_ORDINAL_START + i
+    log.info("competitor search supplied %d evidence chunks for %r", len(chunks), company[:60])
+    return chunks
+
+
 def tool_evidence_for(agent: str, *, target: str, ticker: str) -> list[RetrievedChunk]:
     """The tool evidence each specialist gets (design §3). Never raises."""
     try:
         if agent == "fundamentals":
             return sec_evidence(ticker)
         if agent == "market":
-            return quote_evidence(ticker)
+            return quote_evidence(ticker) + competitor_evidence(target, ticker=ticker)
         if agent == "news_sentiment":
             return news_evidence(target, ticker=ticker)
     except Exception as exc:  # tools already degrade; this is belt-and-braces

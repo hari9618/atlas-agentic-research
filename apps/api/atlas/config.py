@@ -38,9 +38,10 @@ class Settings(BaseSettings):
     # tokens-per-minute budget (reports need ~500 tokens; this leaves reasoning room).
     llm_max_tokens: int = 1024
     # The synthesizer writes the full structured investor brief (JSON with ~15
-    # sections) and GPT-OSS spends part of the budget on reasoning, so it gets a
-    # larger, separate budget. It runs alone after the parallel burst, so it fits TPM.
-    synth_max_tokens: int = 3500
+    # sections), so it gets a larger, separate budget. Sized against Groq's free-tier
+    # 8k tokens/minute: a rich prompt is ~2.5k tokens, + 4.5k output stays under it.
+    # The prompt also enforces brevity, and a cut-off reply is salvaged, not discarded.
+    synth_max_tokens: int = 4500
 
     # ---- Human review ----
     max_revisions: int = 3  # cap the human-feedback → regenerate loop

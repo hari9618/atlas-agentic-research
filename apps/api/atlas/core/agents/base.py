@@ -73,3 +73,48 @@ def extract_json(text: str, default):
         except (ValueError, json.JSONDecodeError):
             continue
     return default
+
+
+def salvage_json_object(text: str) -> dict | None:
+    """Recover the complete top-level fields of a JSON object that was cut off.
+
+    When a reply hits the token limit mid-object, ``json.loads`` rejects all of it.
+    But every top-level field written before the cut is intact: scan from the first
+    ``{`` tracking strings and nesting, remember where the last top-level member
+    ended (a ``,`` at depth 1), and close the object there. Returns None if not even
+    one member is complete.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth, in_str, escaped, last_cut = 0, False, False, None
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:  # the object actually closed — nothing to salvage
+                try:
+                    parsed = json.loads(text[start:i + 1])
+                except (ValueError, json.JSONDecodeError):
+                    return None
+                return parsed if isinstance(parsed, dict) else None
+        elif ch == "," and depth == 1:
+            last_cut = i
+    if last_cut is None:
+        return None
+    try:
+        parsed = json.loads(text[start:last_cut] + "}")
+    except (ValueError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None

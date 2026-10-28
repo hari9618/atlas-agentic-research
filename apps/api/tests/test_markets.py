@@ -172,3 +172,30 @@ def test_business_excerpt_never_returns_a_table_of_contents():
                   "and Regulation 194 Additional Information 261")
     assert _business_excerpt(index_only, 200, _COMPANY_20F) == ""
     assert _business_excerpt("no headings here at all", 200) == ""
+
+
+# ---------------------------------------------------------------- competitor search
+def test_market_analyst_gets_a_dedicated_competitor_search(monkeypatch):
+    from atlas.core.rag import web_evidence as WE
+    from atlas.core.rag.types import Chunk, RetrievedChunk
+
+    seen = {}
+
+    def fake_web_evidence(query, *, max_results=4, entity=None):
+        seen.update(query=query, entity=entity)
+        return [RetrievedChunk(chunk=Chunk(chunk_id=f"w{i}", doc_id=f"web_{i}",
+                                           text="Reliance Industries competes with Indian Oil "
+                                                "and Adani.", source="web_search",
+                                           title=f"Reliance rivals {i}", url="", ordinal=i),
+                               score=0.5) for i in range(2)]
+
+    monkeypatch.setattr(TE, "_offline", lambda: False)
+    monkeypatch.setattr(WE, "web_evidence", fake_web_evidence)
+    monkeypatch.setattr(MARKET, "stock_quote", lambda t: {})
+    chunks = TE.tool_evidence_for("market", target="Reliance Industries Limited",
+                                  ticker="RELIANCE.NS")
+    assert "top competitors" in seen["query"]
+    assert seen["entity"].name == "reliance industries"  # entity guard still applied
+    # Numbered from 10 so keys can't collide with the CRAG fallback's web_search#0..#3.
+    assert [c.chunk.ordinal for c in chunks] == [10, 11]
+    assert chunks[0].chunk.citation().startswith("Reliance rivals 0 (web_search#10)")

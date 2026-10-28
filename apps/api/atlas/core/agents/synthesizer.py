@@ -20,7 +20,7 @@ import logging
 from ...config import get_settings
 from ..guardrails import apply_grounding_guardrail
 from ..state import ResearchState
-from .base import chat, extract_json, llm_ready
+from .base import chat, extract_json, llm_ready, salvage_json_object
 from .report_render import render_markdown
 from .report_schema import NOT_ENOUGH, normalize_sections
 
@@ -31,6 +31,7 @@ _SCHEMA = """{
   "headline": "one sentence that answers the user's question",
   "stance": "positive | neutral | cautious",
   "confidence": 0.0,
+  "bottom_line": "2-3 sentences a reader can act on",
   "executive_summary": ["3-5 bullets: the findings that matter most, each cited"],
   "company_overview": {"what_they_do": "...", "business_model": "how they make money",
                        "products": ["main products / services"], "customers": "who buys and why"},
@@ -49,13 +50,16 @@ _SCHEMA = """{
   "bull_case": ["optimistic points, cited"],
   "bear_case": ["cautious points, cited"],
   "outlook": {"summary": "what to expect", "watch_items": ["what an investor should monitor"]},
-  "bottom_line": "2-3 sentences a reader can act on",
   "uncertainties": ["what we are NOT sure about"]
 }"""
 
 _RULES = (
     "Rules:\n"
     "- Write in plain English for a busy, non-technical investor. No jargon, no tables.\n"
+    "- Be brief — a brief that gets read beats a long one: every text field at most 2 "
+    "short sentences; every list at most 4 items (risks and recent_developments at most "
+    "5, financial metrics at most 6); every bullet under 25 words. Pick what matters most "
+    "to an investor; leave out minor details.\n"
     "- Every factual claim MUST end with its citation: the exact bracketed label shown "
     "after the finding it came from, e.g. [Acme 10-K (sec_edgar#0)]. List items also put "
     "that label in their \"citation\" field.\n"
@@ -141,17 +145,36 @@ def _system_prompt() -> str:
     )
 
 
+_RETRY_NUDGE = (
+    "\n\nIMPORTANT: your previous reply was cut off before the JSON was complete, or was "
+    "not valid JSON. Return ONE valid JSON object and keep it SHORT: one sentence per "
+    "text field and at most 3 items per list."
+)
+
+
 def _structured_sections(state: ResearchState) -> dict | None:
-    """One JSON call; on unparseable output, one strict retry. None if both fail."""
+    """One JSON call; salvage a cut-off reply; else one shorter retry. None if both fail.
+
+    The usual failure is the reply hitting the token limit mid-object (rich evidence →
+    long sections). Retrying the same prompt just gets cut off again, so: keep every
+    section that was fully written (bottom line and verdict come first in the schema
+    for exactly this reason), and if nothing is salvageable, retry asking for less.
+    """
     prompt = _structured_prompt(state)
     budget = get_settings().synth_max_tokens
     system = _system_prompt()
     company = state.get("target") or ""
-    for attempt, nudge in enumerate(("", "\n\nIMPORTANT: your previous reply was not valid "
-                                          "JSON. Return ONLY one valid JSON object.")):
+    for attempt, nudge in enumerate(("", _RETRY_NUDGE)):
         raw = chat(prompt + nudge, system=system, temperature=0.2, max_tokens=budget,
                    run_name="synthesizer.report" if attempt == 0 else "synthesizer.report_retry")
-        sections = normalize_sections(extract_json(raw, default=None), company=company)
+        parsed = extract_json(raw, default=None)
+        if not isinstance(parsed, dict):
+            salvaged = salvage_json_object(raw)
+            if salvaged:
+                log.warning("synthesizer reply was cut off — salvaged %d complete fields",
+                            len(salvaged))
+                parsed = salvaged
+        sections = normalize_sections(parsed, company=company)
         if sections:
             return sections
         log.warning("synthesizer JSON unusable (attempt %d)", attempt + 1)
