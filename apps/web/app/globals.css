@@ -1,58 +1,89 @@
 @import "tailwindcss";
 
-:root {
-  --background: #060912;
-  --foreground: #e7ecf5;
+/* ---- Design tokens (Tailwind 4: @theme exposes them as utilities) -----------
+   Light, professional palette: slate text on white / slate-50, an indigo accent,
+   and emerald / amber / rose for positive / neutral / negative (and low / medium /
+   high severity). Built-in Tailwind colour scales are used directly in markup
+   (shared class recipes live in components/ui/styles.ts); these tokens cover the
+   few app-specific values. */
+@theme {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-}
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
 
-html,
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+  body {
+    @apply bg-white font-sans text-slate-900 antialiased;
+  }
 
-/* War-room backdrop glow */
-.warroom-bg {
-  background-image:
-    radial-gradient(circle at 18% 8%, rgba(56, 189, 248, 0.1), transparent 42%),
-    radial-gradient(circle at 88% 0%, rgba(168, 85, 247, 0.1), transparent 42%);
-}
+  /* Visible, consistent focus ring for keyboard users. */
+  :focus-visible {
+    outline: 2px solid var(--color-indigo-600);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.5); }
-  70% { box-shadow: 0 0 0 9px rgba(56, 189, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
-}
-.active-node { animation: pulse-ring 1.4s infinite; }
+  /* Native <details> accordions: hide the default marker; we draw our own chevron. */
+  summary {
+    cursor: pointer;
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  details[open] > summary .chevron {
+    transform: rotate(180deg);
+  }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
 
 /* ---- Print / "Save as PDF" -------------------------------------------------
-   The war-room UI is dark and interactive; a printed brief should be neither.
    On screen the paper layout is hidden; when printing we swap them so the PDF
-   contains only <PrintableReport> on a white page. */
-.print-only { display: none; }
+   contains only <PrintableReport> (no nav, inputs, review panel or footer). */
+.print-only {
+  display: none;
+}
 
 @media print {
   @page {
     size: A4;
-    margin: 16mm;
+    margin: 16mm 14mm;
   }
 
   html,
   body {
     background: #fff !important;
-    color: #000 !important;
+    color: #0f172a !important;
   }
 
-  /* Hide the app shell (nav, inputs, panels, glow) — keep only the document. */
   .screen-only {
     display: none !important;
   }
@@ -61,16 +92,18 @@ body {
     display: block !important;
   }
 
-  /* Let the browser render the explicit colours in PrintableReport. */
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Avoid orphaned headings / split blocks across pages. */
   h1,
   h2,
   h3 {
     break-after: avoid-page;
+  }
+
+  .avoid-break {
+    break-inside: avoid;
   }
 }
