@@ -27,6 +27,15 @@ services:
         sync: false
       - key: LANGFUSE_HOST
         value: "https://us.cloud.langfuse.com"
+      # Live web + news research (Tavily, free tier). Without it Atlas can only
+      # answer from uploaded documents — it can't research "any company".
+      - key: TAVILY_API_KEY
+        sync: false
+      # Durable Postgres (Neon / Supabase / Render PG). Holds LangGraph checkpoints
+      # (so a run paused for human review survives restarts), episodic memory and
+      # the prompt registry. Unset → falls back to local SQLite (ephemeral here).
+      - key: DATABASE_URL
+        sync: false
       # The Vercel frontend origin allowed to call this API.
       - key: CORS_ORIGINS
         value: "https://atlas-web-lake.vercel.app"

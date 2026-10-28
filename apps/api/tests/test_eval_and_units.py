@@ -23,15 +23,19 @@ def test_retrieval_eval_runs_offline_over_golden_set():
     assert len(out["rows"]) == len(GOLDEN_SET)
 
 
-def test_derive_scores_adds_hallucination_and_alerts():
+def test_derive_scores_passes_metrics_through_unchanged():
+    # The dashboard intentionally shows only the metrics we push — no derived
+    # hallucination / alert-count scores that duplicate or obscure them.
     metrics = {
-        "ragas_faithfulness": 0.80,   # below 0.90 -> alert
-        "ragas_answer_relevancy": 0.90,  # ok
-        "ragas_context_precision": 0.70,  # below 0.80 -> alert
+        "ragas_faithfulness": 0.80,
+        "ragas_answer_relevancy": 0.90,
+        "ragas_context_precision": 0.70,
+        "quality": "ok",
     }
     out = derive_scores(metrics)
-    assert out["ragas_hallucination"] == 0.20
-    assert out["ragas_alert_count"] == 2.0
+    assert out == metrics
+    assert out is not metrics  # a copy, so callers can't mutate the input
+    assert "ragas_hallucination" not in out and "ragas_alert_count" not in out
 
 
 def test_hashing_embedder_is_deterministic_and_normalised():
