@@ -45,3 +45,25 @@ def test_settings_strip_pasted_whitespace(monkeypatch):
 
     monkeypatch.setenv("TAVILY_API_KEY", "  tvly-abc123\n")
     assert Settings().tavily_api_key == "tvly-abc123"
+
+
+def test_web_probe_names_the_failure_without_leaking_the_key(monkeypatch):
+    import importlib
+
+    import httpx
+
+    W = importlib.import_module("atlas.core.tools.web_search")  # the module, not the function
+
+    def rejected(*a, **k):
+        req = httpx.Request("POST", W._ENDPOINT)
+        resp = httpx.Response(401, request=req)
+        raise httpx.HTTPStatusError("401", request=req, response=resp)
+
+    monkeypatch.setattr(W, "_probe_cache", None)
+    monkeypatch.setattr(W, "_tavily_search", rejected)
+    fake = type("S", (), {"tavily_api_key": "tvly-SECRET"})()
+    monkeypatch.setattr(W, "get_settings", lambda: fake)
+    out = client.get("/health/web").json()
+    assert out["ok"] is False and "invalid" in out["detail"] and "SECRET" not in str(out)
+    # Cached: a second hit doesn't call Tavily again.
+    assert client.get("/health/web").json()["cached"] is True

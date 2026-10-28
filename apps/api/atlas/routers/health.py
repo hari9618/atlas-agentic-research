@@ -65,3 +65,15 @@ async def readiness() -> dict:
 
     ready = settings.llm_configured  # LLM is the only hard requirement
     return {"ready": ready, "env": settings.app_env, "checks": checks}
+
+
+@router.get("/health/web")
+async def web_search_probe() -> dict:
+    """Live web-search check: one tiny Tavily query, result cached for 10 minutes.
+
+    Distinguishes "key missing / invalid / out of credits / network" — failures that
+    otherwise only show as research with no web evidence.
+    """
+    from ..core.tools.web_search import probe
+
+    return await run_in_threadpool(probe)
