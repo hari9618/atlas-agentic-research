@@ -1,59 +1,107 @@
 import type { ReportSections } from "@/lib/api";
-import { hasText, isPlaceholder, nonEmpty } from "@/lib/citations";
+import { hasText, nonEmpty } from "@/lib/citations";
 import { Icon } from "@/components/ui/Icon";
-import { cardBase, cx } from "@/components/ui/styles";
-import { Cited } from "../Cited";
-import { BulletList, Prose, Section, sectionId, type Ctx } from "../Section";
+import { cx } from "@/components/ui/styles";
+import { CitedOrMuted, Prose, Section, SubLabel, type Ctx } from "../Section";
 
-export function BullBear({ s, c }: { s: ReportSections; c: Ctx }) {
-  if (!nonEmpty(s.bull_case) && !nonEmpty(s.bear_case)) return null;
+type P = { s: ReportSections; c: Ctx; n?: number };
+
+export const hasCases = (s: ReportSections) =>
+  nonEmpty((s.bull_case ?? []).filter(hasText)) || nonEmpty((s.bear_case ?? []).filter(hasText));
+
+function CaseColumn({ kind, items, c }: { kind: "bull" | "bear"; items: string[]; c: Ctx }) {
+  const bull = kind === "bull";
   return (
-    <Section c={c} id="cases" title="Bull case vs bear case">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
-          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-emerald-800">
-            <Icon name="chart" /> The bull case
-          </p>
-          {nonEmpty(s.bull_case) ? (
-            <BulletList items={s.bull_case} c={c} marker="bg-emerald-500" />
-          ) : (
-            <p className="text-sm text-slate-500 italic">No bull points were supported by evidence.</p>
-          )}
+    <div className="min-w-0">
+      <div
+        className={cx(
+          "flex items-center justify-between gap-3 border-b px-5 py-3",
+          bull ? "border-emerald-200/70 bg-emerald-50/60" : "border-rose-200/70 bg-rose-50/60",
+        )}
+      >
+        <p className={cx("flex items-center gap-2 text-sm font-semibold", bull ? "text-emerald-900" : "text-rose-900")}>
+          <Icon name={bull ? "trending" : "trendingDown"} className="h-4 w-4" />
+          {bull ? "The bull case" : "The bear case"}
+        </p>
+        <span className={cx("font-mono text-[11px] tabular-nums", bull ? "text-emerald-700" : "text-rose-700")}>
+          {items.length} point{items.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {nonEmpty(items) ? (
+        <ol className="divide-y divide-slate-100">
+          {items.map((item, i) => (
+            <li key={i} className="flex gap-3 px-5 py-3.5 text-sm leading-relaxed text-slate-700">
+              <span
+                aria-hidden
+                className={cx("w-5 shrink-0 pt-px font-mono text-[11px] font-semibold", bull ? "text-emerald-600" : "text-rose-600")}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="min-w-0">
+                <CitedOrMuted text={item} c={c} />
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="px-5 py-4 text-sm text-slate-500 italic">
+          No {bull ? "bull" : "bear"} points were supported by evidence.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Both sides of the debate, side by side, with a "vs" marker on the seam. */
+export function BullBear({ s, c, n }: P) {
+  if (!hasCases(s)) return null;
+  const bull = (s.bull_case ?? []).filter(hasText);
+  const bear = (s.bear_case ?? []).filter(hasText);
+  return (
+    <Section c={c} id="cases" n={n} title="Bull vs bear" description="The strongest argument on each side of the evidence.">
+      <div className="relative grid overflow-hidden rounded-xl border border-slate-200/80 @2xl:grid-cols-2">
+        <CaseColumn kind="bull" items={bull} c={c} />
+        <div className="border-t border-slate-200/80 @2xl:border-t-0 @2xl:border-l">
+          <CaseColumn kind="bear" items={bear} c={c} />
         </div>
-        <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-4">
-          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-rose-800">
-            <Icon name="alert" /> The bear case
-          </p>
-          {nonEmpty(s.bear_case) ? (
-            <BulletList items={s.bear_case} c={c} marker="bg-rose-500" />
-          ) : (
-            <p className="text-sm text-slate-500 italic">No bear points were supported by evidence.</p>
-          )}
-        </div>
+        <span
+          aria-hidden
+          className="absolute top-[0.6rem] left-1/2 hidden -translate-x-1/2 rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-slate-500 uppercase shadow-xs ring-1 ring-slate-200 @2xl:block"
+        >
+          vs
+        </span>
       </div>
     </Section>
   );
 }
 
-export function Outlook({ s, c }: { s: ReportSections; c: Ctx }) {
+export const hasOutlook = (s: ReportSections) =>
+  !!s.outlook && (hasText(s.outlook.summary) || nonEmpty((s.outlook.watch_items ?? []).filter(hasText)));
+
+export function Outlook({ s, c, n }: P) {
   const o = s.outlook;
-  const items = (o?.watch_items ?? []).filter(hasText);
-  if (!o || !(hasText(o.summary) || nonEmpty(items))) return null;
+  if (!o || !hasOutlook(s)) return null;
+  const items = (o.watch_items ?? []).filter(hasText);
   return (
-    <Section c={c} id="outlook" title="Outlook">
+    <Section c={c} id="outlook" n={n} title="Outlook" description="What to expect, and the signals worth tracking.">
       <Prose text={o.summary} c={c} />
       {nonEmpty(items) && (
-        <div className={cx(hasText(o.summary) && "mt-5")}>
-          <p className="mb-2 text-sm font-semibold text-slate-900">What to watch</p>
-          <ul className="space-y-2">
+        <div className={cx(hasText(o.summary) && "mt-7")}>
+          <SubLabel className="mb-3">What to watch</SubLabel>
+          <ul className="grid gap-3 @2xl:grid-cols-2">
             {items.map((w, i) => (
-              <li key={i} className="flex gap-3 text-sm leading-relaxed text-slate-700">
+              <li
+                key={i}
+                className="flex gap-3 rounded-xl border border-slate-200/80 bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-[0_1px_2px_rgb(15_23_42/0.04)]"
+              >
                 <span
                   aria-hidden
-                  className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 bg-white"
-                />
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                >
+                  <Icon name="eye" className="h-3.5 w-3.5" />
+                </span>
                 <span className="min-w-0">
-                  <Cited text={w} ns={c.ns} />
+                  <CitedOrMuted text={w} c={c} />
                 </span>
               </li>
             ))}
@@ -64,37 +112,27 @@ export function Outlook({ s, c }: { s: ReportSections; c: Ctx }) {
   );
 }
 
-export function BottomLine({ s, c }: { s: ReportSections; c: Ctx }) {
-  if (!hasText(s.bottom_line)) return null;
-  const H = c.hl === 2 ? "h3" : "h4";
-  return (
-    <section
-      id={sectionId(c, "bottom-line")}
-      className={cx(cardBase, "scroll-mt-24 border-indigo-600 bg-indigo-600 p-5 text-white sm:p-6")}
-    >
-      <H className="text-xs font-semibold tracking-wider text-indigo-100 uppercase">Bottom line</H>
-      {isPlaceholder(s.bottom_line) ? (
-        <p className="mt-2 text-indigo-100 italic">{s.bottom_line}</p>
-      ) : (
-        <p className="mt-2 text-base leading-relaxed font-medium sm:text-lg [&_a]:border-indigo-300 [&_a]:bg-indigo-500 [&_a]:text-white">
-          <Cited text={s.bottom_line} ns={c.ns} />
-        </p>
-      )}
-    </section>
-  );
-}
-
-export function Uncertainties({ items, c }: { items: string[]; c: Ctx }) {
+export function Uncertainties({ items, c, n }: { items: string[]; c: Ctx; n?: number }) {
   const list = items.filter(hasText);
   if (!nonEmpty(list)) return null;
   return (
     <Section
       c={c}
       id="uncertainties"
+      n={n}
       title="What we're not sure about"
-      className="border-amber-200 bg-amber-50/50"
+      description="Gaps in the evidence. Weigh these before acting on the brief."
     >
-      <BulletList items={list} c={c} marker="bg-amber-500" />
+      <ul className="divide-y divide-amber-200/60 overflow-hidden rounded-xl border border-amber-200/80 bg-amber-50/50">
+        {list.map((u, i) => (
+          <li key={i} className="flex gap-3 px-4 py-3.5 text-sm leading-relaxed text-amber-950/90">
+            <Icon name="help" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <span className="min-w-0">
+              <CitedOrMuted text={u} c={c} />
+            </span>
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }

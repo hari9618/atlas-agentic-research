@@ -24,7 +24,7 @@ export function sourceAnchor(ns: string, key: string): string {
 const KIND: [RegExp, string][] = [
   [/sec|edgar|10-?k|filing/i, "SEC"],
   [/news/i, "News"],
-  [/web|tavily|search/i, "Web"],
+  [/web|tavily|(?:^|_)search/i, "Web"], // not "research"
   [/stock|market|stooq|quote/i, "Market"],
   [/memory|episod|derived/i, "Memory"],
   [/research|profile|report/i, "Research"],
@@ -60,7 +60,12 @@ function splitGroup(inner: string): string[] {
 
 /** Split text into plain segments and citation segments. Multi-citation groups like
  *  "[sec_edgar#0; news#1]" become one chip per key. */
-export function splitCitations(text: string): Segment[] {
+// Some models cite with CJK lenticular brackets ("【web_search#0】"); the API now
+// normalises them, but reports saved before that still carry them.
+const FULLWIDTH_RE = /[【［]|[】］]/g;
+
+export function splitCitations(raw: string): Segment[] {
+  const text = raw.replace(FULLWIDTH_RE, (c) => (c === "【" || c === "［" ? "[" : "]"));
   const out: Segment[] = [];
   let last = 0;
   for (const m of text.matchAll(CITE_RE)) {

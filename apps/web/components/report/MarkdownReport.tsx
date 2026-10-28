@@ -13,7 +13,7 @@ const MD: Components = {
     </h3>
   ),
   h3: ({ children }) => <h4 className="mt-4 mb-1.5 font-semibold text-slate-900">{children}</h4>,
-  p: ({ children }) => <p className="mb-3 text-sm leading-relaxed text-slate-700">{children}</p>,
+  p: ({ children }) => <p className="mb-3 text-[15px] leading-7 text-slate-700">{children}</p>,
   ul: ({ children }) => <ul className="mb-3 list-disc space-y-1.5 pl-5 text-sm text-slate-700">{children}</ul>,
   ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1.5 pl-5 text-sm text-slate-700">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
@@ -23,7 +23,7 @@ const MD: Components = {
       <a
         href={href}
         title={title}
-        className="mx-0.5 inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-px align-middle text-[10.5px] leading-4 font-medium whitespace-nowrap text-slate-500 hover:border-indigo-300 hover:text-indigo-700"
+        className="mx-0.5 inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-px align-middle font-mono text-[10px] leading-4 font-medium whitespace-nowrap text-slate-500 no-underline hover:border-indigo-300 hover:text-indigo-700"
       >
         {children}
       </a>
@@ -42,10 +42,21 @@ const MD: Components = {
   code: ({ children }) => <code className="rounded bg-slate-100 px-1 py-0.5 text-[12px] text-slate-800">{children}</code>,
 };
 
-export function MarkdownReport({ report, ns, className }: { report: string; ns: string; className?: string }) {
+export function MarkdownReport({
+  report,
+  ns,
+  className,
+  bare = false,
+}: {
+  report: string;
+  ns: string;
+  className?: string;
+  /** Render without the card shell (when embedded inside the report document). */
+  bare?: boolean;
+}) {
   if (!report?.trim()) return null;
   return (
-    <article className={cx(card, "p-5 sm:p-6", className)}>
+    <article className={cx(!bare && card, !bare && "p-5 sm:p-6", "max-w-[76ch]", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD}>
         {linkCitationsInMarkdown(report, ns)}
       </ReactMarkdown>

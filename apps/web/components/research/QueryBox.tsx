@@ -11,18 +11,73 @@ const EXAMPLES: { text: string; demo?: boolean }[] = [
   { text: "What are Helios Robotics' biggest risks?", demo: true },
 ];
 
+/** The question composer. Full editorial hero before the first run; once a run starts
+ *  it collapses into a slim command bar so the brief gets the screen. */
 export function QueryBox({
   query,
   setQuery,
   onSubmit,
   busy,
+  compact = false,
 }: {
   query: string;
   setQuery: (q: string) => void;
   onSubmit: () => void;
   busy: boolean;
+  compact?: boolean;
 }) {
   const tooShort = query.trim().length < 3;
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit();
+  };
+
+  if (compact) {
+    return (
+      <section
+        aria-labelledby="ask-title"
+        className="relative isolate overflow-hidden rounded-2xl bg-ink-950 p-2 text-white shadow-[0_20px_50px_-30px_rgb(5_7_13/0.7)] ring-1 ring-ink-700/70"
+      >
+        <div aria-hidden className="absolute inset-0 -z-10 bg-grid opacity-60" />
+        <h1 id="ask-title" className="sr-only">
+          Research workspace
+        </h1>
+        <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label htmlFor="research-query" className="sr-only">
+            Your research question
+          </label>
+          <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 transition-colors focus-within:bg-white/[0.05]">
+            <span className="hidden shrink-0 font-mono text-[10.5px] font-medium tracking-[0.18em] text-indigo-300 uppercase sm:block">
+              Ask
+            </span>
+            <Icon name="search" className="h-4 w-4 shrink-0 text-slate-500 sm:hidden" />
+            <input
+              id="research-query"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask about another company…"
+              autoComplete="off"
+              className="w-full min-w-0 bg-transparent py-2.5 text-[15px] text-white placeholder:text-slate-500 focus:outline-none"
+            />
+          </div>
+          <button type="submit" disabled={busy || tooShort} className={cx(btn.light, "py-2")}>
+            {busy ? (
+              <>
+                <span aria-hidden className="h-1.5 w-1.5 animate-blink rounded-full bg-indigo-500" />
+                Researching…
+              </>
+            ) : (
+              <>
+                New research
+                <Icon name="arrowRight" />
+              </>
+            )}
+          </button>
+        </form>
+      </section>
+    );
+  }
+
   return (
     <section
       aria-labelledby="ask-title"
@@ -43,10 +98,7 @@ export function QueryBox({
       </p>
 
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSubmit();
-        }}
+        onSubmit={submit}
         className="mt-7 rounded-2xl border border-white/12 bg-white/[0.06] p-2 backdrop-blur-md transition-colors focus-within:border-indigo-400/60 focus-within:bg-white/[0.08] sm:rounded-full"
       >
         <label htmlFor="research-query" className="sr-only">

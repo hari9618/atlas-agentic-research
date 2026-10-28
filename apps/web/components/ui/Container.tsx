@@ -8,13 +8,13 @@ export function Container({
 }: {
   children: React.ReactNode;
   className?: string;
-  size?: "default" | "narrow";
+  size?: "default" | "narrow" | "wide";
 }) {
   return (
     <div
       className={cx(
         "mx-auto w-full px-4 sm:px-6 lg:px-8",
-        size === "narrow" ? "max-w-4xl" : "max-w-6xl",
+        size === "narrow" ? "max-w-4xl" : size === "wide" ? "max-w-[90rem]" : "max-w-6xl",
         className,
       )}
     >

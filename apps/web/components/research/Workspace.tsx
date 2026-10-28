@@ -13,17 +13,25 @@ import {
   startResearch,
   type StreamHandlers,
 } from "@/lib/api";
-import { SAMPLE_PAYLOAD } from "@/lib/sample-report";
+import { SAMPLE_PAYLOAD, SAMPLE_QUERY } from "@/lib/sample-report";
 import { ExportButton } from "@/components/report/ExportButton";
 import { PrintableReport } from "@/components/report/PrintableReport";
 import { StructuredReport } from "@/components/report/StructuredReport";
 import { Badge } from "@/components/ui/Badge";
 import { Icon, type IconName } from "@/components/ui/Icon";
-import { btn, card, cardBase, cx, eyebrow } from "@/components/ui/styles";
+import { btn, cardBase, cx, eyebrow, monoLabel, surface } from "@/components/ui/styles";
 import { CorpusPanel } from "./CorpusPanel";
-import { IDLE_STEPS, ProgressStepper, type StepId, type Steps } from "./ProgressStepper";
+import {
+  type ActivityEntry,
+  clock,
+  IDLE_STEPS,
+  ProgressStepper,
+  RunCard,
+  type StepId,
+  type Steps,
+} from "./ProgressStepper";
 import { QueryBox } from "./QueryBox";
-import { ReviewPanel, type ReviewEntry } from "./ReviewPanel";
+import { MAX_REVISIONS, ReviewPanel, type ReviewEntry } from "./ReviewPanel";
 
 type Phase = "idle" | "running" | "review" | "revising" | "approving" | "final" | "error";
 type LastOp = { kind: "start" } | { kind: "resume"; action: "approve" | "revise"; feedback: string };
@@ -45,6 +53,8 @@ const HEADLINE: Record<Phase, string> = {
   error: "The run stopped",
 };
 
+const REVIEW_PANEL_ID = "review-panel";
+
 const isSpecialist = (n: string) => (SPECIALISTS as readonly string[]).includes(n);
 
 export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
@@ -53,7 +63,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [steps, setSteps] = useState<Steps>(IDLE_STEPS);
   const [counts, setCounts] = useState<Partial<Record<StepId, number>>>({});
-  const [activity, setActivity] = useState<string[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [payload, setPayload] = useState<Partial<ResearchPayload> | null>(null);
   const [revision, setRevision] = useState(0);
   const [reviewStatus, setReviewStatus] = useState<string>("");
@@ -61,6 +71,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [showSample, setShowSample] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const cancelRef = useRef<(() => void) | null>(null);
   const threadRef = useRef<string>("");
@@ -80,7 +91,8 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   // Close any open stream when leaving the page.
   useEffect(() => () => cancelRef.current?.(), []);
 
-  const log = (line: string) => setActivity((a) => [line, ...a].slice(0, 6));
+  const since = () => Math.max(0, Math.floor((Date.now() - startedRef.current) / 1000));
+  const log = (text: string) => setActivity((a) => [{ text, at: since() }, ...a].slice(0, 7));
   const setStep = (patch: Partial<Steps>) => setSteps((s) => ({ ...s, ...patch }));
 
   const mergePayload = (data: Record<string, unknown>) =>
@@ -175,6 +187,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     lastOpRef.current = { kind: "start" };
     threadRef.current = newThreadId();
     revisionRef.current = 0;
+    beginClock();
     setAsked(text);
     setShowSample(false);
     setError(null);
@@ -182,11 +195,11 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     setRevision(0);
     setReviewStatus("");
     setHistory([]);
+    setReviewOpen(false);
     setCounts({});
-    setActivity(["Starting the research team…"]);
+    setActivity([{ text: "Starting the research team…", at: 0 }]);
     setSteps({ ...IDLE_STEPS, plan: "active" });
     setPhase("running");
-    beginClock();
     cancelRef.current = startResearch(text, { review: true, threadId: threadRef.current }, handlers());
   }
 
@@ -195,16 +208,17 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     cancelRef.current?.();
     lastOpRef.current = { kind: "resume", action, feedback };
     setError(null);
+    setReviewOpen(false);
     beginClock();
     if (action === "approve") {
       setHistory((h) => [...h, { revision: revisionRef.current, action, feedback: "" }]);
       setStep({ review: "active" });
-      setActivity(["Finalizing your approved report…"]);
+      setActivity([{ text: "Finalizing your approved report…", at: 0 }]);
       setPhase("approving");
     } else {
       setHistory((h) => [...h, { revision: revisionRef.current + 1, action, feedback }]);
       setStep({ followup: "active", writing: "idle", review: "idle" });
-      setActivity(["Researching your feedback…"]);
+      setActivity([{ text: "Researching your feedback…", at: 0 }]);
       setPhase("revising");
     }
     cancelRef.current = resumeResearch(threadRef.current, action, feedback, handlers());
@@ -228,29 +242,53 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     setSteps(IDLE_STEPS);
     setActivity([]);
     setHistory([]);
+    setReviewOpen(false);
     setAsked("");
   }
 
+  function openReview() {
+    setReviewOpen(true);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(REVIEW_PANEL_ID)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }
+
   const hasReport = !!payload && (!!payload.report_sections || !!payload.report);
-  const showProgress = phase !== "idle";
+  const compact = phase !== "idle";
   const draftStale = phase === "revising" || phase === "approving";
   const approved = phase === "final";
+  const sampleOn = showSample && !compact;
+  const showMobileBar = hasReport && (phase === "review" || live);
   const statusBadge = approved ? (
-    <Badge tone="good" dot>
+    <Badge tone="good" dot surface="dark">
       {reviewStatus === "auto_approved" ? "Final" : "Approved"}
     </Badge>
   ) : hasReport && phase !== "running" ? (
-    <Badge tone="mid">Draft · awaiting review</Badge>
+    <Badge tone="mid" surface="dark">
+      Draft · awaiting review
+    </Badge>
   ) : null;
+
+  const progressProps = {
+    steps,
+    counts,
+    headline: HEADLINE[phase],
+    elapsed: live ? elapsed : undefined,
+    activity,
+    showFollowup: history.some((h) => h.action === "revise"),
+    reviewLabel: phase === "approving" || approved ? "Approval" : "Your review",
+  };
 
   return (
     <>
-      <div className="screen-only space-y-6">
-        <QueryBox query={query} setQuery={setQuery} onSubmit={() => run(query)} busy={live} />
-        <CorpusPanel />
+      <div className={cx("screen-only space-y-6", showMobileBar && "pb-24 lg:pb-0")}>
+        <QueryBox query={query} setQuery={setQuery} onSubmit={() => run(query)} busy={live} compact={compact} />
+        {!compact && <CorpusPanel />}
 
         {phase === "error" && error && (
-          <div role="alert" className={cx(cardBase, "flex flex-col gap-3 border-rose-200 bg-rose-50/60 p-4 sm:flex-row sm:items-center")}>
+          <div
+            role="alert"
+            className={cx(cardBase, "flex flex-col gap-3 border-rose-200 bg-rose-50/70 p-4 sm:flex-row sm:items-center")}
+          >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
               <Icon name="alert" />
             </span>
@@ -270,73 +308,190 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
           </div>
         )}
 
-        {showProgress && (
-          <ProgressStepper
-            steps={steps}
-            counts={counts}
-            headline={HEADLINE[phase]}
-            elapsed={live ? elapsed : undefined}
-            activity={activity}
-            showFollowup={history.some((h) => h.action === "revise")}
-            reviewLabel={phase === "approving" || approved ? "Approval" : "Your review"}
-          />
+        {compact && !hasReport && (
+          <>
+            <ProgressStepper {...progressProps} question={asked} />
+            {live && <ReportSkeleton />}
+          </>
         )}
 
-        {!showProgress && !showSample && <EmptyState onSample={() => setShowSample(true)} />}
+        {!compact && !showSample && <EmptyState onSample={() => setShowSample(true)} />}
 
-        {showSample && !showProgress && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-slate-600">
-                A sample brief built from the demo documents. Run your own question above.
-              </p>
-              <button type="button" onClick={() => setShowSample(false)} className={btn.ghost}>
-                Hide sample
-              </button>
-            </div>
-            <StructuredReport payload={SAMPLE_PAYLOAD} ns="sample" label="Sample" />
-          </div>
+        {sampleOn && (
+          <ReportLayout
+            aside={
+              <section aria-labelledby="sample-rail-title" className={cx(surface, "p-4")}>
+                <p className={cx(monoLabel, "text-indigo-600")}>Sample brief</p>
+                <h2 id="sample-rail-title" className="mt-2 text-[15px] font-semibold text-slate-950">
+                  Helios Robotics, from the demo documents
+                </h2>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                  A fictional company, so you can see the full layout before running your own question. Every figure is
+                  cited to the demo corpus.
+                </p>
+                <div className="mt-4 space-y-2">
+                  <ExportButton ready className={cx(btn.secondary, "w-full")} />
+                  <button type="button" onClick={() => setShowSample(false)} className={cx(btn.ghost, "w-full")}>
+                    Hide sample
+                  </button>
+                </div>
+              </section>
+            }
+          >
+            <StructuredReport payload={SAMPLE_PAYLOAD} ns="sample" label="Sample" tocStickyClass="top-[4.75rem]" />
+          </ReportLayout>
         )}
 
         {hasReport && payload && (
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-            <div className={cx("min-w-0 transition-opacity", draftStale && phase === "revising" && "opacity-60")}>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-sm text-slate-500">
-                  <span className="font-medium text-slate-700">Question:</span> {asked}
-                </p>
-                <ExportButton ready={hasReport} />
+          <ReportLayout
+            aside={
+              <>
+                <RunCard {...progressProps} live={live} />
+                {(phase === "review" || draftStale || approved) && (
+                  <ReviewPanel
+                    id={REVIEW_PANEL_ID}
+                    mode={approved ? "approved" : draftStale ? "busy" : "review"}
+                    revision={revision}
+                    autoApproved={reviewStatus === "auto_approved"}
+                    history={history}
+                    open={reviewOpen}
+                    onOpenChange={setReviewOpen}
+                    onApprove={() => resume("approve")}
+                    onRevise={(f) => resume("revise", f)}
+                  />
+                )}
+                <div className={cx(surface, "space-y-2 p-3")}>
+                  <ExportButton ready={hasReport} className={cx(btn.secondary, "w-full")} />
+                  {(approved || phase === "error") && (
+                    <button type="button" onClick={reset} className={cx(btn.ghost, "w-full")}>
+                      <Icon name="refresh" />
+                      Start new research
+                    </button>
+                  )}
+                </div>
+                <CorpusPanel />
+              </>
+            }
+          >
+            {draftStale && (
+              <div
+                role="status"
+                className="mb-4 flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm text-indigo-900"
+              >
+                <span aria-hidden className="h-2 w-2 shrink-0 animate-blink rounded-full bg-indigo-500" />
+                {phase === "revising"
+                  ? "Revising this draft with your feedback. The new revision replaces it when ready."
+                  : "Finalizing the approved brief…"}
               </div>
-              <StructuredReport payload={payload} ns="run" revision={revision} status={statusBadge} />
+            )}
+            <div className={cx("transition-opacity", phase === "revising" && "opacity-60")}>
+              <StructuredReport
+                payload={payload}
+                ns="run"
+                revision={revision}
+                status={statusBadge}
+                tocStickyClass="top-[4.75rem]"
+              />
             </div>
-            <aside className="space-y-4 lg:sticky lg:top-20">
-              {(phase === "review" || draftStale || approved) && (
-                <ReviewPanel
-                  mode={approved ? "approved" : draftStale ? "busy" : "review"}
-                  revision={revision}
-                  autoApproved={reviewStatus === "auto_approved"}
-                  history={history}
-                  onApprove={() => resume("approve")}
-                  onRevise={(f) => resume("revise", f)}
-                />
-              )}
-              {approved && (
-                <button type="button" onClick={reset} className={cx(btn.secondary, "w-full")}>
-                  Start new research
-                </button>
-              )}
-            </aside>
-          </div>
+          </ReportLayout>
         )}
       </div>
 
+      {showMobileBar && (
+        <div className="screen-only fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/90 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_-18px_rgb(15_23_42/0.35)] backdrop-blur-md lg:hidden">
+          {phase === "review" ? (
+            <div className="flex gap-2">
+              <button type="button" onClick={() => resume("approve")} className={cx(btn.primary, "flex-1")}>
+                <Icon name="check" />
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={openReview}
+                disabled={revision >= MAX_REVISIONS}
+                className={cx(btn.secondary, "flex-1")}
+              >
+                <Icon name="edit" />
+                Request changes
+              </button>
+            </div>
+          ) : (
+            <p role="status" className="flex items-center gap-2.5 text-sm font-medium text-slate-800">
+              <span aria-hidden className="h-2 w-2 shrink-0 animate-blink rounded-full bg-indigo-500" />
+              <span className="min-w-0 truncate">{HEADLINE[phase]}</span>
+              <span className="ml-auto font-mono text-xs text-slate-500 tabular-nums">{clock(elapsed)}</span>
+            </p>
+          )}
+        </div>
+      )}
+
       <PrintableReport
-        query={asked}
-        payload={hasReport ? payload : null}
-        revision={revision}
-        status={approved ? (reviewStatus === "auto_approved" ? "Final" : "Approved") : "Draft, not yet approved"}
+        query={hasReport ? asked : sampleOn ? SAMPLE_QUERY : asked}
+        payload={hasReport ? payload : sampleOn ? SAMPLE_PAYLOAD : null}
+        revision={hasReport ? revision : sampleOn ? 1 : revision}
+        status={
+          hasReport
+            ? approved
+              ? reviewStatus === "auto_approved"
+                ? "Final"
+                : "Approved"
+              : "Draft, not yet approved"
+            : "Sample data"
+        }
       />
     </>
+  );
+}
+
+/** Report column + sticky right rail (review, run status, actions). On narrow screens
+ *  the rail follows the report. */
+function ReportLayout({ children, aside }: { children: React.ReactNode; aside: React.ReactNode }) {
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18.5rem] xl:gap-8">
+      <div className="min-w-0">{children}</div>
+      <aside
+        aria-label="Review and actions"
+        className="space-y-4 lg:sticky lg:top-[5.5rem] lg:max-h-[calc(100vh-6.5rem)] lg:overflow-y-auto lg:px-1 lg:pb-2 lg:[scrollbar-width:thin]"
+      >
+        {aside}
+      </aside>
+    </div>
+  );
+}
+
+/** Placeholder shapes of the brief while the analysts work (decorative). */
+function ReportSkeleton() {
+  const bar = "rounded-full animate-pulse-soft";
+  return (
+    <div className="space-y-3">
+      <p className="flex items-center gap-2 text-sm text-slate-500">
+        <Icon name="file" className="h-4 w-4" />
+        Your brief appears here as soon as the writer finishes.
+      </p>
+      <div aria-hidden className="space-y-4">
+        <div className="rounded-2xl bg-ink-950 p-6 ring-1 ring-ink-700/70 sm:p-8">
+          <div className={cx(bar, "h-3 w-40 bg-white/10")} />
+          <div className={cx(bar, "mt-6 h-10 w-2/3 max-w-md bg-white/10")} />
+          <div className={cx(bar, "mt-4 h-3 w-full max-w-2xl bg-white/[0.07]")} />
+          <div className={cx(bar, "mt-2 h-3 w-4/5 max-w-xl bg-white/[0.07]")} />
+          <div className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-white/[0.06] sm:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="bg-ink-900 p-4">
+                <div className={cx(bar, "h-2 w-16 bg-white/10")} />
+                <div className={cx(bar, "mt-3 h-6 w-20 bg-white/[0.12]")} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className={cx(surface, "space-y-3 p-6 sm:p-8")}>
+          <div className={cx(bar, "h-2.5 w-10 bg-indigo-100")} />
+          <div className={cx(bar, "h-6 w-48 bg-slate-100")} />
+          <div className={cx(bar, "h-3 w-full bg-slate-100")} />
+          <div className={cx(bar, "h-3 w-11/12 bg-slate-100")} />
+          <div className={cx(bar, "h-3 w-3/4 bg-slate-100")} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -352,7 +507,7 @@ function EmptyState({ onSample }: { onSample: () => void }) {
     ["check", "Review", "You get a cited draft to approve or send back with changes."],
   ];
   return (
-    <section aria-labelledby="empty-title" className={cx(card, "p-5 sm:p-7")}>
+    <section aria-labelledby="empty-title" className={cx(surface, "p-5 sm:p-7")}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className={eyebrow}>What happens next</p>

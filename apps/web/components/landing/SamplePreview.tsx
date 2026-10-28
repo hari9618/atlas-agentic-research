@@ -28,7 +28,7 @@ export function SamplePreview() {
             <Icon name="arrowRight" />
           </Link>
         </div>
-        <div className="relative mx-auto mt-12 max-w-4xl">
+        <div className="relative mx-auto mt-12 max-w-5xl">
           <div
             aria-hidden
             className="absolute -inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(60%_50%_at_50%_0%,rgb(99_102_241/0.18),transparent_70%)] blur-xl"

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API } from "@/lib/api";
 import { Icon } from "@/components/ui/Icon";
-import { btn, card, cx } from "@/components/ui/styles";
+import { btn, cx, surface } from "@/components/ui/styles";
 
 type CorpusDoc = { doc_id: string; title: string };
 type CorpusStatus = { documents: CorpusDoc[]; document_count: number; chunk_count: number };
@@ -99,11 +99,11 @@ export function CorpusPanel() {
   };
 
   return (
-    <details className={cx(card, "group px-4 sm:px-5")}>
+    <details className={cx(surface, "group @container px-4 sm:px-5")}>
       <summary className="flex items-center justify-between gap-3 py-3.5">
         <span className="flex min-w-0 items-center gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-            <Icon name="file" />
+            <Icon name="database" />
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-slate-900">Your documents</span>
@@ -115,7 +115,7 @@ export function CorpusPanel() {
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-indigo-700">
-          <span className="hidden sm:inline">Manage</span>
+          <span className="hidden @sm:inline">Manage</span>
           <Icon name="chevron" className="chevron h-4 w-4 transition-transform" />
         </span>
       </summary>
@@ -126,7 +126,7 @@ export function CorpusPanel() {
           (a pitch deck, a filing, internal notes) and they become citable on the next run.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 @lg:grid-cols-2">
           <div className="rounded-lg border border-dashed border-slate-300 p-4">
             <p className="text-sm font-medium text-slate-900">Upload a document</p>
             <p className="mt-0.5 text-xs text-slate-500">PDF, Word, Markdown or text, up to 10 MB</p>
