@@ -1,19 +1,22 @@
 """Episodic memory — what Atlas has analyzed before.
 
-Every completed research run is stored as an *episode* in SQLite. On a new query
-Atlas can recall past episodes two ways (exactly as the architecture prescribes):
+Every completed research run is stored as an *episode*. On a new query Atlas can
+recall past episodes two ways (exactly as the architecture prescribes):
 
 * **Recency** — most recent episodes, via a plain SQL `ORDER BY created_at`.
 * **Relevance** — most semantically similar past queries, via embeddings + cosine.
 
-Storage is a single SQLite file; relevance uses the same (offline-capable) embedder
-as the RAG layer, so it works with no network in tests.
+Storage is one table behind a thin backend: Postgres (``atlas_episodes``) when
+``DATABASE_URL`` is set — so memory survives redeploys on ephemeral hosts like
+Render's free tier — otherwise a local SQLite file. An explicit ``db_path`` always
+means SQLite, which keeps tests hermetic. Relevance uses the same (offline-capable)
+embedder as the RAG layer, so it works with no network in tests.
 
 The query embedding is computed **once at save time** and persisted alongside the row.
 Recall previously re-embedded every stored query on every call — O(n) embedding work per
 run, which is invisible at ten episodes and crippling at ten thousand. Vectors live in
-SQLite rather than a second Qdrant collection so episodic memory keeps working when
-Qdrant isn't running (Atlas degrades to an in-memory store by design).
+the episodes table rather than a second Qdrant collection so episodic memory keeps
+working when Qdrant isn't running (Atlas degrades to an in-memory store by design).
 """
 
 from __future__ import annotations
@@ -25,13 +28,18 @@ from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from ...paths import cache_dir
+from ..persistence import get_pg_pool, run_ddl
 from ..rag.embeddings import get_lc_embeddings
 
 log = logging.getLogger("atlas.memory.episodic")
+
+# Column order every backend returns rows in; `embedding` is only present when asked for.
+_COLS = "id,query,target,report,confidence,findings,created_at"
 
 
 @dataclass
@@ -49,12 +57,16 @@ class Episode:
         return f"[{self.created_at[:10]}] {self.query} -> {head}"
 
 
-class EpisodicMemory:
-    def __init__(self, db_path: Path | None = None, offline: bool = False) -> None:
-        self.db_path = db_path or (cache_dir() / "atlas_episodes.sqlite")
+# ------------------------------------------------------------------ backends
+# Both backends speak plain tuples in `_COLS` order (+ embedding), so EpisodicMemory
+# holds all the embedding/ranking logic exactly once.
+
+class _SqliteBackend:
+    name = "sqlite"
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._offline = offline
-        self._embedder = None
         self._ensure_table()
 
     def _conn(self) -> sqlite3.Connection:
@@ -80,6 +92,124 @@ class EpisodicMemory:
                 c.execute("ALTER TABLE episodes ADD COLUMN embedding BLOB")
                 log.info("Migrated episodes table: added embedding column")
 
+    def insert(self, query: str, target: str, report: str, confidence: float | None,
+               findings: list[dict], created_at: datetime, blob: bytes | None) -> int:
+        with closing(self._conn()) as c, c:
+            cur = c.execute(
+                "INSERT INTO episodes (query, target, report, confidence, findings, created_at, "
+                "embedding) VALUES (?,?,?,?,?,?,?)",
+                (query, target, report, confidence, json.dumps(findings),
+                 created_at.isoformat(), blob),
+            )
+            return int(cur.lastrowid)
+
+    def recent(self, limit: int) -> list[tuple]:
+        with closing(self._conn()) as c, c:
+            return c.execute(
+                f"SELECT {_COLS} FROM episodes ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+
+    def rows(self, with_embedding: bool = False) -> list[tuple]:
+        cols = _COLS + (",embedding" if with_embedding else "")
+        with closing(self._conn()) as c, c:
+            return c.execute(f"SELECT {cols} FROM episodes").fetchall()
+
+    def set_embeddings(self, pairs: list[tuple[bytes, int]]) -> None:
+        with closing(self._conn()) as c, c:
+            c.executemany("UPDATE episodes SET embedding=? WHERE id=?", pairs)
+
+    def count(self) -> int:
+        with closing(self._conn()) as c, c:
+            return int(c.execute("SELECT COUNT(*) FROM episodes").fetchone()[0])
+
+
+class _PostgresBackend:
+    """Same contract as `_SqliteBackend`, on the shared psycopg pool.
+
+    The pool's connections use ``dict_row`` (required by LangGraph's PostgresSaver,
+    which shares the pool), so rows are converted back to `_COLS`-ordered tuples here.
+    """
+
+    name = "postgres"
+    _DDL = (
+        """CREATE TABLE IF NOT EXISTS atlas_episodes (
+            id BIGSERIAL PRIMARY KEY,
+            query TEXT NOT NULL,
+            target TEXT,
+            report TEXT,
+            confidence DOUBLE PRECISION,
+            findings JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            embedding BYTEA
+        )""",
+        "CREATE INDEX IF NOT EXISTS atlas_episodes_created_at_idx "
+        "ON atlas_episodes (created_at DESC)",
+    )
+
+    def __init__(self, pool: Any) -> None:
+        self.pool = pool
+        run_ddl(pool, self._DDL)
+
+    def _fetch(self, sql: str, params: tuple = ()) -> list[tuple]:
+        with self.pool.connection() as conn:
+            return [tuple(r.values()) for r in conn.execute(sql, params).fetchall()]
+
+    def insert(self, query: str, target: str, report: str, confidence: float | None,
+               findings: list[dict], created_at: datetime, blob: bytes | None) -> int:
+        from psycopg.types.json import Jsonb
+
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                "INSERT INTO atlas_episodes (query, target, report, confidence, findings, "
+                "created_at, embedding) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (query, target, report, confidence, Jsonb(findings), created_at, blob),
+            ).fetchone()
+        return int(row["id"])
+
+    def recent(self, limit: int) -> list[tuple]:
+        return self._fetch(
+            f"SELECT {_COLS} FROM atlas_episodes ORDER BY created_at DESC, id DESC LIMIT %s",
+            (limit,),
+        )
+
+    def rows(self, with_embedding: bool = False) -> list[tuple]:
+        cols = _COLS + (",embedding" if with_embedding else "")
+        return self._fetch(f"SELECT {cols} FROM atlas_episodes ORDER BY id")
+
+    def set_embeddings(self, pairs: list[tuple[bytes, int]]) -> None:
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany("UPDATE atlas_episodes SET embedding=%s WHERE id=%s", pairs)
+
+    def count(self) -> int:
+        with self.pool.connection() as conn:
+            return int(conn.execute("SELECT COUNT(*) AS n FROM atlas_episodes").fetchone()["n"])
+
+
+# ------------------------------------------------------------------ memory
+class EpisodicMemory:
+    def __init__(self, db_path: Path | None = None, offline: bool = False,
+                 pool: Any = None) -> None:
+        """Pick the backend: an explicit ``pool`` → Postgres; an explicit ``db_path`` →
+        SQLite; neither → Postgres if ``DATABASE_URL`` is reachable, else SQLite."""
+        self._offline = offline
+        self._embedder = None
+        if pool is None and db_path is None:
+            pool = get_pg_pool()
+        self._store: _SqliteBackend | _PostgresBackend | None = None
+        if pool is not None:
+            try:
+                self._store = _PostgresBackend(pool)
+            except Exception as exc:
+                log.warning("Postgres episodic store unavailable (%s) — using SQLite.", exc)
+        if self._store is None:
+            self._store = _SqliteBackend(db_path or (cache_dir() / "atlas_episodes.sqlite"))
+        self.db_path: Path | None = getattr(self._store, "db_path", None)
+        log.info("Episodic memory backend: %s", self._store.name)
+
+    @property
+    def backend(self) -> str:
+        return self._store.name
+
     def _embed(self):
         if self._embedder is None:
             self._embedder = get_lc_embeddings(offline=self._offline)
@@ -90,39 +220,28 @@ class EpisodicMemory:
         return np.asarray(vector, dtype=np.float32).tobytes()
 
     @staticmethod
-    def _unpack(blob: bytes | None):
+    def _unpack(blob: bytes | memoryview | None):
         if not blob:
             return None
-        return np.frombuffer(blob, dtype=np.float32)
+        return np.frombuffer(bytes(blob), dtype=np.float32)
 
     # ---- write ----
     def save(self, query: str, report: str, confidence: float | None,
              findings: list[dict], target: str = "") -> int:
-        created_at = datetime.now(UTC).isoformat()
+        created_at = datetime.now(UTC)
         # Embed once, here — recall then reads the vector instead of recomputing it.
         try:
             blob = self._pack(self._embed().embed_query(query))
         except Exception as exc:  # pragma: no cover - embedder unavailable
             log.warning("Could not embed episode at save time (%s) — will embed on recall", exc)
             blob = None
-        with closing(self._conn()) as c, c:
-            cur = c.execute(
-                "INSERT INTO episodes (query, target, report, confidence, findings, created_at, "
-                "embedding) VALUES (?,?,?,?,?,?,?)",
-                (query, target, report, confidence, json.dumps(findings), created_at, blob),
-            )
-            log.info("Saved episode #%s for query %r", cur.lastrowid, query[:60])
-            return int(cur.lastrowid)
+        eid = self._store.insert(query, target, report, confidence, findings, created_at, blob)
+        log.info("Saved episode #%s for query %r", eid, query[:60])
+        return eid
 
     # ---- read: recency (SQL) ----
     def recent(self, limit: int = 3) -> list[Episode]:
-        with closing(self._conn()) as c, c:
-            rows = c.execute(
-                "SELECT id,query,target,report,confidence,findings,created_at "
-                "FROM episodes ORDER BY created_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return [self._row(r) for r in rows]
+        return [self._row(r) for r in self._store.recent(limit)]
 
     # ---- read: relevance (vectors) ----
     def relevant(self, query: str, limit: int = 3) -> list[Episode]:
@@ -159,35 +278,29 @@ class EpisodicMemory:
         return [episodes[i] for i in order]
 
     def _rows_with_vectors(self) -> list[tuple[Episode, np.ndarray | None]]:
-        with closing(self._conn()) as c, c:
-            rows = c.execute(
-                "SELECT id,query,target,report,confidence,findings,created_at,embedding "
-                "FROM episodes"
-            ).fetchall()
-        return [(self._row(r), self._unpack(r[7])) for r in rows]
+        return [(self._row(r), self._unpack(r[7])) for r in self._store.rows(True)]
 
     def _backfill(self, vectors: dict[int, np.ndarray]) -> None:
-        with closing(self._conn()) as c, c:
-            c.executemany(
-                "UPDATE episodes SET embedding=? WHERE id=?",
-                [(self._pack(v), eid) for eid, v in vectors.items()],
-            )
+        self._store.set_embeddings([(self._pack(v), eid) for eid, v in vectors.items()])
         log.info("Backfilled %d episode embedding(s)", len(vectors))
 
     def count(self) -> int:
-        with closing(self._conn()) as c, c:
-            return int(c.execute("SELECT COUNT(*) FROM episodes").fetchone()[0])
+        return self._store.count()
 
     def all(self) -> list[Episode]:
-        with closing(self._conn()) as c, c:
-            rows = c.execute(
-                "SELECT id,query,target,report,confidence,findings,created_at FROM episodes"
-            ).fetchall()
-        return [self._row(r) for r in rows]
+        return [self._row(r) for r in self._store.rows()]
 
     @staticmethod
     def _row(r) -> Episode:
+        # SQLite stores findings as JSON text / created_at as ISO text; Postgres hands
+        # back a parsed JSONB list and a datetime. Normalize both to the same Episode.
+        findings = r[5]
+        if isinstance(findings, str):
+            findings = json.loads(findings) if findings else []
+        created_at = r[6]
+        if isinstance(created_at, datetime):
+            created_at = created_at.astimezone(UTC).isoformat()
         return Episode(
             id=r[0], query=r[1], target=r[2] or "", report=r[3] or "",
-            confidence=r[4], findings=json.loads(r[5]) if r[5] else [], created_at=r[6],
+            confidence=r[4], findings=findings or [], created_at=created_at or "",
         )

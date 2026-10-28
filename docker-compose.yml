@@ -1,5 +1,5 @@
 # Atlas local stack — bring up with: cp .env.example .env && docker compose up
-# Free / self-hostable components only: Qdrant + self-hosted Langfuse + api + web.
+# Free / self-hostable components only: Qdrant + Postgres + self-hosted Langfuse + api + web.
 name: atlas
 
 services:
@@ -12,6 +12,26 @@ services:
       - qdrant_storage:/qdrant/storage
     healthcheck:
       test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---- Postgres (durable Atlas state) ------------------------------------
+  # LangGraph checkpoints (paused human-review runs), episodic memory and the
+  # prompt registry. Separate from langfuse-db so either can be reset alone.
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas_dev_pw   # DEV ONLY — change for any real use
+      POSTGRES_DB: atlas
+    ports:
+      - "5433:5432"   # host 5433 avoids clashing with a locally installed Postgres
+    volumes:
+      - atlas_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas -d atlas"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -64,10 +84,13 @@ services:
       # Override the localhost defaults from .env for in-container networking:
       QDRANT_URL: http://qdrant:6333
       LANGFUSE_HOST: http://langfuse:3000
+      DATABASE_URL: postgresql://atlas:atlas_dev_pw@postgres:5432/atlas
     volumes:
       - ./apps/api:/app          # dev hot-reload
     depends_on:
       qdrant:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     command: uvicorn atlas.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
@@ -88,3 +111,4 @@ services:
 volumes:
   qdrant_storage:
   langfuse_db_data:
+  atlas_pg_data:
