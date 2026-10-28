@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 
 from ..config import get_settings
 from ..core.rag.crag import corrective_retrieve
@@ -37,7 +38,16 @@ TARGETS = {
 
 
 # ---------- generation (grounded answer) ----------
-def generate_answer(question: str, contexts: list[str]) -> str:
+def _num(value) -> float:
+    """A metric value as a float; Ragas reports a failed sample as NaN — count it 0."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if math.isnan(f) else f
+
+
+def generate_answer(question: str, contexts: list[str], model: str | None = None) -> str:
     from ..llm import get_llm
     from ..observability import langchain_callbacks
 
@@ -47,13 +57,13 @@ def generate_answer(question: str, contexts: list[str]) -> str:
         "If the context is insufficient, say so.\n\n"
         f"Context:\n{context_block}\n\nQuestion: {question}\nAnswer:"
     )
-    llm = get_llm(temperature=0.0)
+    llm = get_llm(temperature=0.0, model=model)
     resp = llm.invoke(prompt, config={"callbacks": langchain_callbacks()})
     return (resp.content if hasattr(resp, "content") else str(resp)).strip()
 
 
 # ---------- metric computation ----------
-def _ragas_metrics(samples: list[dict]) -> list[dict[str, float]] | None:
+def _ragas_metrics(samples: list[dict], model: str | None = None) -> list[dict[str, float]] | None:
     """Real Ragas path (Groq + local embeddings). Returns per-sample metrics or None."""
     try:
         from datasets import Dataset
@@ -69,7 +79,7 @@ def _ragas_metrics(samples: list[dict]) -> list[dict[str, float]] | None:
 
     from ..llm import get_llm
 
-    ragas_llm = LangchainLLMWrapper(get_llm(temperature=0.0))
+    ragas_llm = LangchainLLMWrapper(get_llm(temperature=0.0, model=model))
     ragas_emb = LangchainEmbeddingsWrapper(
         HuggingFaceEmbeddings(model_name=get_settings().embedding_model)
     )
@@ -84,6 +94,11 @@ def _ragas_metrics(samples: list[dict]) -> list[dict[str, float]] | None:
             for s in samples
         ]
     )
+    # Groq serves one completion per request (n=1); answer_relevancy's default
+    # strictness=3 asks for three and fails every sample, so generate questions one at
+    # a time.
+    if hasattr(answer_relevancy, "strictness"):
+        answer_relevancy.strictness = 1
     metrics = [faithfulness, answer_relevancy, context_precision]
     for m in metrics:
         if hasattr(m, "llm"):
@@ -96,15 +111,15 @@ def _ragas_metrics(samples: list[dict]) -> list[dict[str, float]] | None:
     for _, row in df.iterrows():
         out.append(
             {
-                "ragas_faithfulness": float(row.get("faithfulness", 0.0) or 0.0),
-                "ragas_answer_relevancy": float(row.get("answer_relevancy", 0.0) or 0.0),
-                "ragas_context_precision": float(row.get("context_precision", 0.0) or 0.0),
+                "ragas_faithfulness": _num(row.get("faithfulness")),
+                "ragas_answer_relevancy": _num(row.get("answer_relevancy")),
+                "ragas_context_precision": _num(row.get("context_precision")),
             }
         )
     return out
 
 
-def _judge_metrics(sample: dict) -> dict[str, float]:
+def _judge_metrics(sample: dict, model: str | None = None) -> dict[str, float]:
     """LLM-as-judge fallback producing the same metric names as Ragas."""
     from ..llm import get_llm
     from ..observability import langchain_callbacks
@@ -120,7 +135,7 @@ def _judge_metrics(sample: dict) -> dict[str, float]:
         f"Question: {sample['question']}\nContext:\n{context_block}\n"
         f"Answer: {sample['answer']}\nGround truth: {sample['ground_truth']}\nJSON:"
     )
-    llm = get_llm(temperature=0.0)
+    llm = get_llm(temperature=0.0, model=model)
     resp = llm.invoke(prompt, config={"callbacks": langchain_callbacks()})
     text = resp.content if hasattr(resp, "content") else str(resp)
     try:
@@ -129,14 +144,15 @@ def _judge_metrics(sample: dict) -> dict[str, float]:
     except Exception:
         data = {}
     return {
-        "ragas_faithfulness": float(data.get("faithfulness", 0.0)),
-        "ragas_answer_relevancy": float(data.get("answer_relevancy", 0.0)),
-        "ragas_context_precision": float(data.get("context_precision", 0.0)),
+        "ragas_faithfulness": _num(data.get("faithfulness")),
+        "ragas_answer_relevancy": _num(data.get("answer_relevancy")),
+        "ragas_context_precision": _num(data.get("context_precision")),
     }
 
 
 # ---------- driver ----------
-def run(offline_embed: bool = False) -> dict:
+def run(offline_embed: bool = False, *, limit: int | None = None, model: str | None = None,
+        push: bool = True) -> dict:
     if not get_settings().llm_configured:
         raise RuntimeError("GROQ_API_KEY is required for the Ragas eval (answer generation).")
 
@@ -144,10 +160,10 @@ def run(offline_embed: bool = False) -> dict:
     index = ingest_documents(docs, offline=offline_embed)
 
     samples: list[dict] = []
-    for item in GOLDEN_SET:
+    for item in GOLDEN_SET[:limit] if limit else GOLDEN_SET:
         res = corrective_retrieve(index, item.question, top_k=4)
         contexts = [c.text for c in res.chunks]
-        answer = generate_answer(item.question, contexts)
+        answer = generate_answer(item.question, contexts, model=model)
         samples.append(
             {
                 "question": item.question,
@@ -157,21 +173,26 @@ def run(offline_embed: bool = False) -> dict:
             }
         )
 
-    per_item = _ragas_metrics(samples)
+    try:
+        per_item = _ragas_metrics(samples, model=model)
+    except Exception as exc:  # Ragas/provider incompatibility → same-schema judge
+        log.warning("Ragas evaluation failed (%s) — using LLM-judge fallback.", exc)
+        per_item = None
     method = "ragas"
     if per_item is None:
-        per_item = [_judge_metrics(s) for s in samples]
+        per_item = [_judge_metrics(s, model=model) for s in samples]
         method = "llm_judge"
 
     # push to Langfuse + aggregate
     agg: dict[str, list[float]] = {k: [] for k in TARGETS}
     for sample, metrics in zip(samples, per_item, strict=False):
-        push_item_scores(
-            metrics,
-            question=sample["question"],
-            answer=sample["answer"],
-            trace_name=f"atlas_rag_eval[{method}]",
-        )
+        if push:
+            push_item_scores(
+                metrics,
+                question=sample["question"],
+                answer=sample["answer"],
+                trace_name=f"atlas_rag_eval[{method}]",
+            )
         for k in TARGETS:
             agg[k].append(metrics.get(k, 0.0))
     flush()
@@ -184,9 +205,14 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING)
     parser = argparse.ArgumentParser(description="Ragas eval → Langfuse scores.")
     parser.add_argument("--offline-embed", action="store_true", help="hashing embedder")
+    parser.add_argument("--limit", type=int, default=None, help="only the first N golden items")
+    parser.add_argument("--model", default=None,
+                        help="Groq model for generation + judging (e.g. openai/gpt-oss-20b)")
+    parser.add_argument("--no-push", action="store_true", help="don't send scores to Langfuse")
     args = parser.parse_args()
 
-    out = run(offline_embed=args.offline_embed)
+    out = run(offline_embed=args.offline_embed, limit=args.limit, model=args.model,
+              push=not args.no_push)
     s = out["summary"]
     print(f"\n=== Atlas Ragas eval (method: {out['method']}) ===")
     for name, target in TARGETS.items():

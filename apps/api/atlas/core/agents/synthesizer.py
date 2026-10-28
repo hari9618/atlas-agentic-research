@@ -17,12 +17,14 @@ from __future__ import annotations
 import json
 import logging
 
+from langchain_core.runnables import RunnableConfig
+
 from ...config import get_settings
 from ..guardrails import apply_grounding_guardrail
 from ..state import ResearchState
 from .base import chat, extract_json, llm_ready, salvage_json_object
 from .report_render import render_markdown
-from .report_schema import NOT_ENOUGH, normalize_sections
+from .report_schema import NOT_ENOUGH, normalize_brackets, normalize_sections
 
 log = logging.getLogger("atlas.agents.synthesizer")
 
@@ -152,7 +154,7 @@ _RETRY_NUDGE = (
 )
 
 
-def _structured_sections(state: ResearchState) -> dict | None:
+def _structured_sections(state: ResearchState, system: str | None = None) -> dict | None:
     """One JSON call; salvage a cut-off reply; else one shorter retry. None if both fail.
 
     The usual failure is the reply hitting the token limit mid-object (rich evidence →
@@ -162,7 +164,7 @@ def _structured_sections(state: ResearchState) -> dict | None:
     """
     prompt = _structured_prompt(state)
     budget = get_settings().synth_max_tokens
-    system = _system_prompt()
+    system = system or _system_prompt()
     company = state.get("target") or ""
     for attempt, nudge in enumerate(("", _RETRY_NUDGE)):
         raw = chat(prompt + nudge, system=system, temperature=0.2, max_tokens=budget,
@@ -181,7 +183,7 @@ def _structured_sections(state: ResearchState) -> dict | None:
     return None
 
 
-def _markdown_fallback(state: ResearchState) -> str:
+def _markdown_fallback(state: ResearchState, system: str | None = None) -> str:
     """The pre-structured plain markdown brief — used when JSON generation fails."""
     feedback = (state.get("feedback") or "").strip() if (state.get("revision") or 0) > 0 else ""
     fb = f"\n\nA human reviewer asked: \"{feedback}\" — address it.\n" if feedback else ""
@@ -196,7 +198,8 @@ def _markdown_fallback(state: ResearchState) -> str:
         "Bottom Line. 2-4 short sentences or bullets each, no tables. Cite evidence inline "
         "using the bracketed labels; only assert what the findings support; if a section "
         f"has no supporting evidence, write '{NOT_ENOUGH}'",
-        system=_system_prompt(), temperature=0.3, run_name="synthesizer.report_markdown",
+        system=system or _system_prompt(), temperature=0.3,
+        run_name="synthesizer.report_markdown",
     )
 
 
@@ -280,15 +283,25 @@ def _offline_sections(state: ResearchState) -> dict:
     return normalize_sections(raw, company=target) or {}
 
 
-def synthesize_node(state: ResearchState) -> dict:
+def _prompt_override(config: RunnableConfig | None) -> str | None:
+    """A candidate system prompt the LLM-Ops optimizer is trialling on THIS run only.
+
+    Carried in the run config rather than the shared registry, so concurrent user
+    runs keep the active prompt while a candidate is being evaluated.
+    """
+    return ((config or {}).get("configurable") or {}).get("synthesizer_system_override")
+
+
+def synthesize_node(state: ResearchState, config: RunnableConfig | None = None) -> dict:
     findings = state.get("findings", [])
+    system = _prompt_override(config)
     citations = _collect_citations(findings)
 
     if not llm_ready():
         return _finalize(_offline_sections(state), findings, citations)
 
     try:
-        sections = _structured_sections(state)
+        sections = _structured_sections(state, system)
     except Exception as exc:  # LLM failure after retries → simpler prompt below
         log.warning("structured synthesis failed (%s: %s); falling back to markdown",
                     type(exc).__name__, exc)
@@ -297,7 +310,7 @@ def synthesize_node(state: ResearchState) -> dict:
         return _finalize(sections, findings, citations)
 
     # Last resort: plain markdown. If this raises too, the run errors (by design).
-    report = _markdown_fallback(state)
+    report = normalize_brackets(_markdown_fallback(state, system))
     guard = apply_grounding_guardrail(report, findings, 0.6)
     uncertainties = ["The structured brief could not be generated this run; "
                      "this is a plain-text summary.", *_degradation_notes(findings)]

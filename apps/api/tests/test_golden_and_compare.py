@@ -61,7 +61,7 @@ def test_comparison_scores_both_systems_with_the_same_metrics():
     assert result["n"] == 2
     agg = result["aggregate"]
     for system in ("baseline", "atlas"):
-        for metric in ("faithfulness", "citation_coverage", "citation_correctness", "latency"):
+        for metric in ("faithfulness", "citation_coverage", "citation_accuracy", "latency"):
             assert metric in agg[system]
     # Every row carries both systems' scores so the comparison is apples-to-apples.
     for row in result["rows"]:

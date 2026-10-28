@@ -12,7 +12,11 @@ prerequisite for ever extending automatic prompt-improvement beyond the synthesi
 
 Scores (all 0..1, computed offline — no LLM, so the test suite stays hermetic):
 
-* **groundedness** — fraction of the agent's findings that carry a real citation.
+* **groundedness** — how well the agent's findings are supported by the evidence they
+  cite (deterministic claim verification: supported 1, partial 0.5). A finding with a
+  citation but no attached evidence text can't be checked and counts as cited-only.
+  (Counting "has a citation" alone read ~1.0 for every agent, so it could never pick
+  out a weak one.)
 * **richness**     — how many solid, non-stub findings it produced (vs. a target).
 * **score**        — the blend the dashboard/gate reads (grounding weighted higher).
 """
@@ -42,13 +46,25 @@ def _has_citation(finding: dict) -> bool:
     return bool(cite) and cite != "n/a"
 
 
+def _support(finding: dict) -> float:
+    """1 / 0.5 / 0 for a finding its cited evidence supports / partly / not at all."""
+    if not _has_citation(finding):
+        return 0.0
+    evidence = str(finding.get("evidence_text") or "")
+    if not evidence.strip():
+        return 1.0  # cited, but no evidence attached to check against
+    from .claim_verify import PARTIAL, SUPPORTED, verify_claim
+
+    verdict = verify_claim(str(finding.get("claim", "")), evidence, use_llm=False).support
+    return 1.0 if verdict == SUPPORTED else 0.5 if verdict == PARTIAL else 0.0
+
+
 def score_agent(findings: list[dict]) -> dict:
     """Score one agent's findings on groundedness, richness, and the blend."""
     if not findings:
         return {"groundedness": 0.0, "richness": 0.0, "score": 0.0, "n_findings": 0}
     solid = [f for f in findings if _is_solid(f)]
-    grounded = sum(1 for f in solid if _has_citation(f))
-    groundedness = round(grounded / len(solid), 3) if solid else 0.0
+    groundedness = round(sum(_support(f) for f in solid) / len(solid), 3) if solid else 0.0
     richness = round(min(1.0, len(solid) / _RICHNESS_TARGET), 3)
     score = round(0.7 * groundedness + 0.3 * richness, 3)
     return {

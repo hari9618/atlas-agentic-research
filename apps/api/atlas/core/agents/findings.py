@@ -11,6 +11,12 @@ from __future__ import annotations
 from ..rag.types import RetrievedChunk
 from .base import extract_json
 
+# How much of the cited chunk rides on the finding for claim verification. The WHOLE
+# chunk (corpus chunks are ~1.1-1.5k chars): an earlier 500-char cut dropped figures
+# the model had been shown (Helios' "$4.2 billion" sits at char 516 of its 10-K chunk),
+# so true claims were scored "unsupported". Capped only to bound checkpoint size.
+_EVIDENCE_CHARS = 2000
+
 
 def findings_instructions(count: str = "2-4") -> str:
     """The extraction contract appended to every findings prompt."""
@@ -63,7 +69,7 @@ def parse_findings(agent: str, raw: str, chunks: list[RetrievedChunk]) -> list[d
             ch = chunks[idx - 1].chunk
             # Carry the cited evidence text on the finding so claim-level citation
             # verification can check entailment deterministically (no re-retrieval).
-            cite, ev_text, ev_id = ch.citation(), ch.text[:500], ch.chunk_id
+            cite, ev_text, ev_id = ch.citation(), ch.text[:_EVIDENCE_CHARS], ch.chunk_id
         findings.append({
             "agent": agent,
             "claim": claim,

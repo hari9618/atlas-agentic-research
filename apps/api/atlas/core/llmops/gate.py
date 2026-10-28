@@ -9,8 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 THRESHOLDS = {
-    "faithfulness": 0.50,  # grounding / citation coverage
-    "relevancy": 0.60,     # answers the question
+    "faithfulness": 0.70,       # the brief's statements are supported by the evidence
+    "relevancy": 0.60,          # it answers the question
+    "citation_accuracy": 0.60,  # cited statements are backed by THEIR OWN citation
 }
 
 

@@ -1,10 +1,11 @@
 """Versioned prompt/config registry — the "Release" box of the architecture.
 
 Each named prompt keeps a history of versions and one **active** version (what
-production uses). A **candidate** slot holds a proposed prompt during a
-self-improvement run (a canary): the synthesizer uses the candidate if present,
-otherwise the active version. Releasing promotes the candidate to a new active
-version.
+production uses). A **candidate** slot records the prompt a self-improvement run
+is currently evaluating, for visibility only: live traffic always gets the active
+version. The optimizer passes the candidate to its own trial runs through the run
+config (see ``graph.run_research(prompt_override=...)``), so an unproven prompt never
+reaches a real user's report. Releasing promotes the candidate to a new active version.
 
 Persistence: a Postgres table (``atlas_prompt_registry``, one row per prompt) when
 ``DATABASE_URL`` is set, so a released prompt survives redeploys on ephemeral hosts;
@@ -45,16 +46,13 @@ class PromptEntry:
     name: str
     active_version: int
     versions: list[PromptVersion] = field(default_factory=list)
-    candidate: str | None = None  # canary text during optimization
+    candidate: str | None = None  # prompt under evaluation (never served live)
 
     def active_text(self) -> str:
         for v in self.versions:
             if v.version == self.active_version:
                 return v.text
         return self.versions[-1].text if self.versions else ""
-
-    def effective_text(self) -> str:
-        return self.candidate if self.candidate is not None else self.active_text()
 
 
 class PromptRegistry:
@@ -154,8 +152,14 @@ class PromptRegistry:
 
     # ---- read ----
     def effective(self, name: str, default: str = "") -> str:
+        """The prompt live traffic uses: always the active version."""
         e = self.entries.get(name)
-        return e.effective_text() if e else default
+        return e.active_text() if e else default
+
+    def candidate(self, name: str) -> str | None:
+        """The prompt a self-improvement run is evaluating, if any."""
+        e = self.entries.get(name)
+        return e.candidate if e else None
 
     def active_version(self, name: str) -> int:
         e = self.entries.get(name)

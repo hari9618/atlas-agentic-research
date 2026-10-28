@@ -13,8 +13,11 @@ def test_registry_seed_candidate_and_release(tmp_path):
     assert reg.active_version("synthesizer_system") == 1
     assert reg.effective("synthesizer_system")  # seed text present
 
+    seed = reg.effective("synthesizer_system")
     reg.set_candidate("synthesizer_system", "A BETTER PROMPT")
-    assert reg.effective("synthesizer_system") == "A BETTER PROMPT"  # canary wins
+    # The candidate is recorded but never served to live traffic.
+    assert reg.candidate("synthesizer_system") == "A BETTER PROMPT"
+    assert reg.effective("synthesizer_system") == seed
 
     v = reg.release_candidate("synthesizer_system", {"overall": 0.9}, notes="test")
     assert v == 2
@@ -27,28 +30,41 @@ def test_registry_seed_candidate_and_release(tmp_path):
 
 
 def test_gate_passes_and_fails():
-    assert run_gate({"faithfulness": 0.9, "relevancy": 0.8}).passed
-    failed = run_gate({"faithfulness": 0.1, "relevancy": 0.8})
-    assert not failed.passed and failed.reasons
+    good = {"faithfulness": 0.9, "relevancy": 0.8, "citation_accuracy": 0.8}
+    assert run_gate(good).passed
+    failed = run_gate({**good, "faithfulness": 0.1})
+    assert not failed.passed and failed.reasons == ["faithfulness 0.10 < 0.70"]
+    # A metric that was never computed fails rather than silently passing.
+    assert not run_gate({"faithfulness": 0.9, "relevancy": 0.8}).passed
 
 
-def test_evaluate_run_scores_a_grounded_report():
+_EVIDENCE = ("Helios Robotics reported total revenue of $4.2 billion in fiscal 2025, up 28% "
+             "from $3.28 billion. The three largest customers were 39% of revenue.")
+
+
+def test_evaluate_run_scores_the_brief_against_its_evidence():
     result = {
-        "report": "## Verdict\nHelios is strong [Helios 10-K (sec_edgar#0)].",
-        "findings": [{"agent": "risk", "claim": "x", "citation": "Helios 10-K (sec_edgar#0)"}],
+        "report": (
+            "## Executive Summary\n"
+            "- Helios revenue reached $4.2 billion in fiscal 2025, up 28% "
+            "[Helios 10-K (sec_edgar#0)].\n"
+            "- Helios plans to triple revenue to $12.6 billion by 2027 "
+            "[Helios 10-K (sec_edgar#0)].\n"
+        ),
+        "findings": [{"agent": "risk", "claim": "Revenue was $4.2 billion, up 28%.",
+                      "citation": "Helios 10-K (sec_edgar#0)", "evidence_text": _EVIDENCE}],
     }
-    s = evaluate_run("Evaluate Helios", result, push=False)
-    assert set(s) == {
-        "faithfulness", "relevancy", "overall", "agents",
-        "citation_coverage", "citation_correctness", "claim_support",
-    }
-    assert 0.0 <= s["overall"] <= 1.0
-    assert s["faithfulness"] == 1.0  # the citation appears in the report
-    # Per-agent scores are attributed to the specialist that produced the finding.
-    assert "risk" in s["agents"]
-    # Claim-level metrics are present and well-formed.
-    assert 0.0 <= s["citation_coverage"] <= 1.0
-    assert s["claim_support"]["total"] >= 1
+    s = evaluate_run("Evaluate Helios Robotics revenue", result, push=False)
+    assert {"faithfulness", "relevancy", "context_precision", "citation_accuracy",
+            "citation_coverage", "overall", "quality", "report_check", "agents"} <= set(s)
+    # One true statement, one invented figure: faithfulness is 0.5, not the old 1.0
+    # that only checked the citation label appeared somewhere in the report.
+    assert s["faithfulness"] == 0.5
+    assert s["citation_accuracy"] == 0.5 and s["citation_coverage"] == 1.0
+    assert s["report_check"]["unsupported"] == [
+        "Helios plans to triple revenue to $12.6 billion by 2027"]
+    assert 0.0 <= s["overall"] <= 1.0 and s["quality"] in {"good", "ok", "poor"}
+    assert "risk" in s["agents"]  # attributed to the specialist
 
 
 def test_optimize_loop_runs_offline():

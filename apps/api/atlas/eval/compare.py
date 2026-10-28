@@ -26,7 +26,8 @@ from .golden import ALL_GOLDEN
 
 log = logging.getLogger("atlas.eval.compare")
 
-_METRICS = ["faithfulness", "relevancy", "overall", "citation_coverage", "citation_correctness"]
+_METRICS = ["faithfulness", "relevancy", "context_precision", "citation_accuracy",
+            "citation_coverage", "overall"]
 
 
 def _score(query: str, result: dict) -> dict:

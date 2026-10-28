@@ -33,6 +33,16 @@ _SYNONYMS = {
 }
 
 
+# gpt-oss sometimes cites with CJK lenticular brackets — "【web_search#0】" — which the
+# frontend's citation chips and the guardrails don't recognise. Map them to "[...]".
+_FULLWIDTH = str.maketrans({"【": "[", "】": "]", "［": "[", "］": "]"})
+
+
+def normalize_brackets(text: str) -> str:
+    """Rewrite fullwidth citation brackets as ASCII ``[...]``."""
+    return text.translate(_FULLWIDTH)
+
+
 def _str(value: Any) -> str:
     """Scalar → trimmed string; dict/list → readable joined text; None → ''."""
     if value is None:
@@ -41,7 +51,7 @@ def _str(value: Any) -> str:
         value = "; ".join(_str(v) for v in value.values() if _str(v))
     elif isinstance(value, (list, tuple)):
         value = "; ".join(_str(v) for v in value if _str(v))
-    return str(value).strip()[:_MAX_STR]
+    return normalize_brackets(str(value)).strip()[:_MAX_STR]
 
 
 def _str_list(value: Any) -> list[str]:

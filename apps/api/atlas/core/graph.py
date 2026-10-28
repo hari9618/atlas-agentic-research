@@ -147,7 +147,8 @@ class RunNotPausedError(LookupError):
     """Resume was requested for a thread that is not waiting for review."""
 
 
-def _run_config(thread_id: str, query: str, *, resume: bool = False) -> dict:
+def _run_config(thread_id: str, query: str, *, resume: bool = False,
+                prompt_override: str | None = None) -> dict:
     """Per-run config.
 
     The Langfuse handler is attached at the *graph* level so the whole run is ONE
@@ -159,8 +160,12 @@ def _run_config(thread_id: str, query: str, *, resume: bool = False) -> dict:
     from ..observability import langchain_callbacks  # lazy: keeps import graph clean
 
     tags = ["atlas", "research_run"] + (["resume"] if resume else [])
+    configurable: dict = {"thread_id": thread_id}
+    if prompt_override:  # an LLM-Ops trial run (see synthesizer._prompt_override)
+        configurable["synthesizer_system_override"] = prompt_override
+        tags.append("llmops_trial")
     return {
-        "configurable": {"thread_id": thread_id},
+        "configurable": configurable,
         "callbacks": langchain_callbacks(),
         "run_name": "atlas_research_run",
         "metadata": {
@@ -188,7 +193,7 @@ def _pending_interrupt(snapshot) -> dict | None:
     return None
 
 
-def _drive(graph, inp, config: dict, thread_id: str) -> Iterator[dict]:
+def _drive(graph, inp, config: dict, thread_id: str, *, score: bool = True) -> Iterator[dict]:
     """Stream node updates, then emit ``review_required`` (paused) or ``final``."""
     for chunk in graph.stream(inp, config=config, stream_mode="updates"):
         for node, update in chunk.items():
@@ -215,15 +220,16 @@ def _drive(graph, inp, config: dict, thread_id: str) -> Iterator[dict]:
     # After the report has streamed to the user, auto-evaluate the run and push the
     # scores to Langfuse — once, for the approved final report only. Best-effort: a
     # scoring hiccup must never fail the research run.
-    _score_run(values.get("query", ""), result)
+    if score:
+        _score_run(values.get("query", ""), result)
 
 
-def run_research(query: str, *, thread_id: str = "default",
-                 require_review: bool = False) -> Iterator[dict]:
+def run_research(query: str, *, thread_id: str = "default", require_review: bool = False,
+                 prompt_override: str | None = None, score: bool = True) -> Iterator[dict]:
     """Start a run. Yields ``start``, one event per node update, then
     ``review_required`` (paused for a human) or ``final``."""
     graph = get_graph()
-    config = _run_config(thread_id, query)
+    config = _run_config(thread_id, query, prompt_override=prompt_override)
     # Fresh run inputs. ``None`` clears the additive lists (findings/debate/history)
     # left by an earlier run on a reused thread id, and the review scalars are reset
     # so a new run never inherits a previous run's revision count or feedback.
@@ -235,7 +241,7 @@ def run_research(query: str, *, thread_id: str = "default",
         "target": "", "ticker": "",
     }
     yield {"event": "start", "data": {"query": query, "thread_id": thread_id}}
-    yield from _drive(graph, inp, config, thread_id)
+    yield from _drive(graph, inp, config, thread_id, score=score)
 
 
 def thread_status(thread_id: str) -> str:
@@ -301,13 +307,17 @@ def _score_run(query: str, result: dict) -> None:
         log.warning("Per-run scoring/push failed (non-fatal): %s", exc)
 
 
-def research(query: str, *, thread_id: str = "default") -> dict:
+def research(query: str, *, thread_id: str = "default", prompt_override: str | None = None,
+             score: bool = True) -> dict:
     """Run to completion with review off and return the final payload (non-streaming).
 
-    Used by ``/research/sync``, the LLM-Ops optimizer and the eval harness.
+    Used by ``/research/sync``, the LLM-Ops optimizer and the eval harness. The
+    optimizer passes ``prompt_override`` (a candidate prompt for this run only) and
+    ``score=False`` (it evaluates the run itself, so it must not be scored twice).
     """
     result = None
-    for ev in run_research(query, thread_id=thread_id, require_review=False):
+    for ev in run_research(query, thread_id=thread_id, require_review=False,
+                           prompt_override=prompt_override, score=score):
         if ev["event"] == "final":
             result = ev["data"]
     return result or {}
