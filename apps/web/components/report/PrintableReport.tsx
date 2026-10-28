@@ -243,8 +243,10 @@ export function PrintableReport({
             </section>
           )}
 
+          {/* Long sections flow across pages; only rows/cards are kept whole. Keeping a
+              whole section together pushes it to the next page and leaves a blank gap. */}
           {nonEmpty(s.competitors) && (
-            <section className="avoid-break">
+            <section>
               <H2>Competitors</H2>
               <table className="w-full border-collapse">
                 <thead>
@@ -256,7 +258,7 @@ export function PrintableReport({
                 </thead>
                 <tbody>
                   {s.competitors.map((r, i) => (
-                    <tr key={i}>
+                    <tr key={i} className="avoid-break">
                       <td className={`${td} font-semibold text-[#0f172a]`}>{r.name}</td>
                       <td className={td}><P text={r.comparison} /></td>
                       <td className={td}><Tag value={r.threat} /></td>
@@ -299,7 +301,7 @@ export function PrintableReport({
           )}
 
           {nonEmpty(s.risks) && (
-            <section className="avoid-break">
+            <section>
               <H2>Key risks</H2>
               <table className="w-full border-collapse">
                 <thead>
@@ -311,7 +313,7 @@ export function PrintableReport({
                 </thead>
                 <tbody>
                   {s.risks.map((r, i) => (
-                    <tr key={i}>
+                    <tr key={i} className="avoid-break">
                       <td className={`${td} font-semibold text-[#0f172a]`}>{r.title}</td>
                       <td className={td}><Tag value={r.severity} /></td>
                       <td className={td}><P text={r.detail} /></td>
@@ -323,9 +325,9 @@ export function PrintableReport({
           )}
 
           {(nonEmpty(s.bull_case) || nonEmpty(s.bear_case)) && (
-            <section className="avoid-break">
+            <section>
               <H2>Bull case vs bear case</H2>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="avoid-break grid grid-cols-2 gap-3">
                 <div className="rounded-md border border-[#a7f3d0] bg-[#ecfdf5] p-2.5">
                   <h3 className="mb-1 text-[9pt] font-bold text-[#047857]">Bull case</h3>
                   <Bullets items={s.bull_case} />
