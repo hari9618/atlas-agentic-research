@@ -106,7 +106,7 @@ def _followup_findings(state: ResearchState, target: str, feedback: str) -> list
         "Focus only on what the reviewer asked for. " + entity_rule(target)
         + findings_instructions("2-4"),
         system="You extract evidence-grounded findings; you never assert unsupported facts.",
-        temperature=0.2, run_name="review.revise_research",
+        temperature=0.2, run_name="review.revise_research", reasoning_effort="low",
     )
     findings = parse_findings(FOLLOWUP_AGENT, raw, chunks)
     return findings or [{"agent": FOLLOWUP_AGENT, "claim": "No additional grounded evidence "

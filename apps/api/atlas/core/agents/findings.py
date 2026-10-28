@@ -9,7 +9,7 @@ and the cited evidence text rides along for claim-level verification.
 from __future__ import annotations
 
 from ..rag.types import RetrievedChunk
-from .base import extract_json
+from .base import extract_json, salvage_json_array
 
 # How much of the cited chunk rides on the finding for claim verification. The WHOLE
 # chunk (corpus chunks are ~1.1-1.5k chars): an earlier 500-char cut dropped figures
@@ -56,6 +56,10 @@ def parse_findings(agent: str, raw: str, chunks: list[RetrievedChunk]) -> list[d
     items = extract_json(raw, default=[])
     if isinstance(items, dict):  # tolerate {"findings": [...]}
         items = items.get("findings", [])
+    if not items or not isinstance(items, list):
+        # Cut off by the token limit: keep every complete finding. (A cut reply can
+        # also mis-parse as its first element alone, which the dict branch drops.)
+        items = salvage_json_array(raw) or []
     findings: list[dict] = []
     for it in items if isinstance(items, list) else []:
         if not isinstance(it, dict):

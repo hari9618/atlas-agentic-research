@@ -23,6 +23,7 @@ def get_llm(
     temperature: float | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
+    reasoning_effort: str | None = None,
 ) -> ChatGroq:
     """Return a cached ChatGroq client.
 
@@ -34,6 +35,11 @@ def get_llm(
         max_tokens: optional output budget override (e.g. the synthesizer's larger
             structured-report budget). Part of the cache key, so each budget gets
             its own client.
+        reasoning_effort: "low" / "medium" / "high" for reasoning models (gpt-oss).
+            Hidden reasoning tokens count against ``max_tokens``: on a long evidence
+            prompt, default-effort reasoning used 1023 of a specialist's 1024 tokens,
+            and one token more cut the JSON reply off, losing every finding. Extraction
+            tasks pass "low". Ignored for non-reasoning models.
     """
     settings = get_settings()
     if not settings.llm_configured:
@@ -51,6 +57,12 @@ def get_llm(
         model=model_name,
         temperature=temp,
         max_tokens=budget,
+        # Sent as a raw body field: the pinned groq SDK (0.11) predates a named
+        # `reasoning_effort` argument and raises TypeError on it.
+        model_kwargs=(
+            {"extra_body": {"reasoning_effort": reasoning_effort}}
+            if reasoning_effort and "gpt-oss" in model_name else {}
+        ),
         # Retry budget, layer 1 of 2. The free tier caps tokens-per-minute (8k on
         # gpt-oss-120b) and the four specialists fire in parallel, so bursts hit a
         # 429. The Groq SDK honours Retry-After on 429/5xx/timeouts: 1 try + 4

@@ -34,14 +34,16 @@ def llm_ready() -> bool:
 
 
 def chat(prompt: str, *, system: str | None = None, temperature: float = 0.2,
-         run_name: str = "agent", max_tokens: int | None = None) -> str:
+         run_name: str = "agent", max_tokens: int | None = None,
+         reasoning_effort: str | None = None) -> str:
     """One traced LLM turn. Raises if no key — guard with llm_ready() first.
 
     Transient failures (429 / timeout / 5xx) that survive the SDK's own retries get
     ``LLM_ATTEMPTS`` outer attempts with backoff (see ``atlas.core.resilience``);
     anything else propagates so the calling node can degrade.
     """
-    llm = get_llm(temperature=temperature, max_tokens=max_tokens)
+    llm = get_llm(temperature=temperature, max_tokens=max_tokens,
+                  reasoning_effort=reasoning_effort)
     msgs: list = []
     if system:
         msgs.append(SystemMessage(content=system))
@@ -73,6 +75,50 @@ def extract_json(text: str, default):
         except (ValueError, json.JSONDecodeError):
             continue
     return default
+
+
+def salvage_json_array(text: str) -> list | None:
+    """Recover the complete elements of a JSON array that was cut off.
+
+    The findings reply is ``[{...}, {...}, ...]``; a token-limit cut mid-way used to
+    lose ALL of them. Scan from the first ``[`` tracking strings and nesting, note
+    where each top-level element ends, and close the array after the last complete
+    one. Returns None if no element is complete.
+    """
+    start = text.find("[")
+    if start == -1:
+        return None
+    depth, in_str, escaped, last_end = 0, False, False, None
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:  # the array actually closed
+                try:
+                    parsed = json.loads(text[start:i + 1])
+                except (ValueError, json.JSONDecodeError):
+                    return None
+                return parsed if isinstance(parsed, list) else None
+            if depth == 1:
+                last_end = i  # a top-level element just closed
+    if last_end is None:
+        return None
+    try:
+        parsed = json.loads(text[start:last_end + 1] + "]")
+    except (ValueError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, list) and parsed else None
 
 
 def salvage_json_object(text: str) -> dict | None:

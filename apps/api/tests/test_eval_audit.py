@@ -199,3 +199,56 @@ def test_optimizer_discards_the_candidate_even_if_a_run_fails(monkeypatch, tmp_p
     with pytest.raises(RuntimeError):
         O.optimize("Evaluate Helios Robotics", max_iters=1)
     assert reg.candidate("synthesizer_system") is None  # cleaned up, not left live
+
+
+# ---- live-run regressions (Reliance, after web search was fixed) ----------------------
+
+def test_cut_off_findings_reply_keeps_every_complete_finding():
+    from atlas.core.agents.base import salvage_json_array
+
+    raw = ('[{"claim": "Revenue grew 25% [x]", "citation_index": 1}, '
+           '{"claim": "Board meets on 30 Oct", "citation_index": 2}, {"claim": "Jio ent')
+    assert [f["claim"] for f in salvage_json_array(raw)] == [
+        "Revenue grew 25% [x]", "Board meets on 30 Oct"]
+    assert salvage_json_array('[{"claim": "cut') is None
+    chunk = RetrievedChunk(chunk=Chunk(chunk_id="c1", doc_id="d", text=TENK, source="web_search",
+                                       title="t", ordinal=0), score=1.0)
+    one_chunk = raw.replace('"citation_index": 2', '"citation_index": 1')
+    out = F.parse_findings("news_sentiment", one_chunk, [chunk])
+    assert len(out) == 2  # previously: "No well-grounded finding extracted."
+
+
+def test_a_reply_cut_after_one_finding_is_not_mistaken_for_a_wrapper():
+    chunk = RetrievedChunk(chunk=Chunk(chunk_id="c1", doc_id="d", text=TENK, source="sec_edgar",
+                                       title="t", ordinal=0), score=1.0)
+    raw = '[{"claim": "Revenue was $4.2 billion", "citation_index": 1}, {"claim": "cut'
+    assert [f["claim"] for f in F.parse_findings("fundamentals", raw, [chunk])] == [
+        "Revenue was $4.2 billion"]
+
+
+def test_placeholder_records_are_dropped():
+    s = normalize_sections({
+        "company": "Reliance", "headline": "Modest growth, real risks.",
+        "competitors": [{"name": "Not enough evidence yet.", "threat": "low",
+                         "comparison": "Not enough evidence yet."},
+                        {"name": "Bharti Airtel", "threat": "high"}],
+        "risks": [{"title": "N/A", "detail": "n/a"}, {"title": "Debt", "detail": "Rising"}],
+        "financials": {"metrics": [{"label": "Revenue", "value": "Not enough evidence yet."}]},
+    })
+    assert [c["name"] for c in s["competitors"]] == ["Bharti Airtel"]
+    assert [r["title"] for r in s["risks"]] == ["Debt"]
+    assert s["financials"]["metrics"] == []
+
+
+def test_specialists_ask_for_low_reasoning_effort(monkeypatch):
+    from atlas import llm as L
+
+    L.get_llm.cache_clear()
+    fake = type("S", (), {"llm_configured": True, "groq_api_key": "k",
+                          "groq_model": "openai/gpt-oss-120b", "llm_temperature": 0.2,
+                          "llm_max_tokens": 1024})()
+    monkeypatch.setattr(L, "get_settings", lambda: fake)
+    assert L.get_llm(reasoning_effort="low").model_kwargs == {
+        "extra_body": {"reasoning_effort": "low"}}
+    assert L.get_llm(model="llama-3.1-8b-instant", reasoning_effort="low").model_kwargs == {}
+    L.get_llm.cache_clear()

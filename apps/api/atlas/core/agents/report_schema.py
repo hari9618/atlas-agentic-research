@@ -101,16 +101,30 @@ def _cite(item: dict) -> str:
     return _str(item.get("citation") or item.get("source"))
 
 
+_PLACEHOLDERS = {"not enough evidence yet", "not enough evidence", "n/a", "na", "none",
+                 "unknown", "-", "tbd", "not available"}
+
+
+def _placeholder(text: str) -> bool:
+    """Empty, or filler like "Not enough evidence yet." / "N/A".
+
+    The model fills a schema slot with the placeholder when it has nothing — fine for
+    a text field, but as a list record it rendered a competitor literally named
+    "Not enough evidence yet." (seen live). Records are dropped instead.
+    """
+    return _str(text).lower().strip(" .") in _PLACEHOLDERS
+
+
 def _metric(m: dict) -> dict | None:
     label, value = _str(m.get("label") or m.get("name")), _str(m.get("value"))
-    if not (label and value):
+    if not (label and value) or _placeholder(label) or _placeholder(value):
         return None
     return {"label": label, "value": value, "change": _str(m.get("change")), "citation": _cite(m)}
 
 
 def _competitor(c: dict) -> dict | None:
     name = _str(c.get("name") or c.get("_text"))
-    if not name:
+    if not name or _placeholder(name):
         return None
     return {"name": name, "comparison": _str(c.get("comparison") or c.get("detail")),
             "threat": _enum(c.get("threat"), LEVELS, "medium"), "citation": _cite(c)}
@@ -118,7 +132,7 @@ def _competitor(c: dict) -> dict | None:
 
 def _development(d: dict) -> dict | None:
     title, detail = _str(d.get("title") or d.get("_text")), _str(d.get("detail"))
-    if not (title or detail):
+    if _placeholder(title) and _placeholder(detail):
         return None
     return {"date": _str(d.get("date")), "title": title or detail[:80], "detail": detail,
             "sentiment": _enum(d.get("sentiment"), TONES, "neutral",
@@ -128,7 +142,7 @@ def _development(d: dict) -> dict | None:
 
 def _risk(r: dict) -> dict | None:
     title, detail = _str(r.get("title") or r.get("_text")), _str(r.get("detail"))
-    if not (title or detail):
+    if _placeholder(title) and _placeholder(detail):
         return None
     return {"title": title or detail[:80], "severity": _enum(r.get("severity"), LEVELS, "medium"),
             "detail": detail, "citation": _cite(r)}

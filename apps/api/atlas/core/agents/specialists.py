@@ -190,7 +190,10 @@ def _make_specialist(name: str, focus: str, role: str):
             f"\n\nEvidence (cite by index):\n{format_evidence(chunks)}\n\n"
             + entity_rule(target) + findings_instructions("3-5")
         )
-        raw = chat(prompt, system=system, temperature=0.2, run_name=f"specialist.{name}")
+        # Extraction, not deliberation: low reasoning effort keeps the hidden reasoning
+        # from eating the output budget (see llm.get_llm) and saves daily tokens.
+        raw = chat(prompt, system=system, temperature=0.2, run_name=f"specialist.{name}",
+                   reasoning_effort="low")
         findings = parse_findings(name, raw, chunks)
         if not findings:  # model returned nothing parseable — keep the run honest
             findings = [{"agent": name, "claim": "No well-grounded finding extracted.",
