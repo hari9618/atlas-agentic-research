@@ -44,7 +44,7 @@ def _tavily_search(api_key: str, query: str, max_results: int, topic: str) -> li
 def web_search(query: str, *, max_results: int = 5, topic: str = "general") -> list[dict]:
     settings = get_settings()
     if not settings.tavily_api_key:
-        log.info("TAVILY_API_KEY not set — web_search returns no results.")
+        log.warning("TAVILY_API_KEY not set — web_search returns no results.")
         return []
     try:
         return retry_call(

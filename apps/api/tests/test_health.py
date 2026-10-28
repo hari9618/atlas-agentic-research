@@ -32,3 +32,16 @@ def test_root_identifies_service() -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert resp.json()["service"] == "atlas-api"
+
+
+def test_readiness_reports_database_and_web_search():
+    checks = client.get("/health/ready").json()["checks"]
+    assert checks["database"]["backend"] in {"postgres", "sqlite"}
+    assert isinstance(checks["web_search"]["configured"], bool)
+
+
+def test_settings_strip_pasted_whitespace(monkeypatch):
+    from atlas.config import Settings
+
+    monkeypatch.setenv("TAVILY_API_KEY", "  tvly-abc123\n")
+    assert Settings().tavily_api_key == "tvly-abc123"

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        # Keys pasted into a hosting dashboard often carry a trailing space/newline,
+        # which the provider then rejects (silently, for best-effort tools).
+        str_strip_whitespace=True,
     )
 
     # ---- LLM (Groq) ----

@@ -2,15 +2,19 @@
 
 `/health` is a liveness probe (the process is up). `/health/ready` reports which
 integrations are actually configured/reachable, so you can see at a glance —
-in the browser or in the war-room UI — whether Groq, Langfuse, and Qdrant are wired.
+in the browser or in the war-room UI — whether Groq, Langfuse, Qdrant, Postgres and
+web search are wired. (Configuration only for web search: probing Tavily on every
+health check would spend API credits.)
 """
 
 from __future__ import annotations
 
 import httpx
 from fastapi import APIRouter
+from starlette.concurrency import run_in_threadpool
 
 from ..config import get_settings
+from ..core.persistence import using_postgres
 from ..observability import get_langfuse_handler
 
 router = APIRouter(tags=["health"])
@@ -51,6 +55,12 @@ async def readiness() -> dict:
             "reachable": qdrant_ok,
             "url": settings.qdrant_url,
         },
+        "database": {
+            "configured": bool(settings.database_url.strip()),
+            # Opening the pool can block on a cold connect, so keep it off the loop.
+            "backend": "postgres" if await run_in_threadpool(using_postgres) else "sqlite",
+        },
+        "web_search": {"configured": bool(settings.tavily_api_key.strip())},
     }
 
     ready = settings.llm_configured  # LLM is the only hard requirement
