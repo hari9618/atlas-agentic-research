@@ -25,7 +25,7 @@ const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
     title: "Trust",
     links: [
       { href: "/#faq", label: "Where the data comes from" },
-      { href: "/#faq", label: "How citations work" },
+      { href: "/#inside", label: "Under the hood" },
       { href: "/#faq", label: "Your documents" },
       { href: "/#compare", label: "Atlas vs alternatives" },
     ],
@@ -34,34 +34,36 @@ const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-slate-200 bg-slate-50">
-      <Container className="grid gap-10 py-12 md:grid-cols-[1.4fr_repeat(3,1fr)]">
-        <div className="max-w-xs">
-          <Wordmark />
-          <p className="mt-3 text-sm text-slate-600">
-            An AI due-diligence analyst. Research support with every claim cited, not investment advice.
-          </p>
-        </div>
-        {COLUMNS.map((col) => (
-          <nav key={col.title} aria-label={col.title}>
-            <p className="text-sm font-semibold text-slate-900">{col.title}</p>
-            <ul className="mt-3 space-y-2">
-              {col.links.map((l) => (
-                <li key={l.label}>
-                  <Link href={l.href} className="text-sm text-slate-600 hover:text-slate-900">
-                    {l.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        ))}
-      </Container>
-      <div className="border-t border-slate-200">
-        <Container className="flex flex-col gap-2 py-5 text-xs text-slate-500 sm:flex-row sm:justify-between">
-          <p>&copy; {new Date().getFullYear()} Atlas. Research support only; not financial advice.</p>
-          <p>Built with LangGraph, hybrid retrieval and cited evidence.</p>
+    <footer className="bg-slate-50 pt-6">
+      <div className="bg-ink-950 text-slate-400">
+        <Container className="grid gap-10 py-14 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+          <div className="max-w-xs">
+            <Wordmark tone="dark" />
+            <p className="mt-4 text-sm leading-relaxed">
+              An AI due-diligence analyst. Research support with every claim cited, not investment advice.
+            </p>
+          </div>
+          {COLUMNS.map((col) => (
+            <nav key={col.title} aria-label={col.title}>
+              <p className="font-mono text-[11px] tracking-[0.18em] text-slate-500 uppercase">{col.title}</p>
+              <ul className="mt-4 space-y-2.5">
+                {col.links.map((l) => (
+                  <li key={l.label}>
+                    <Link href={l.href} className="text-sm text-slate-300 transition-colors hover:text-white">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
         </Container>
+        <div className="border-t border-white/[0.07]">
+          <Container className="flex flex-col gap-2 py-6 text-xs text-slate-500 sm:flex-row sm:justify-between">
+            <p>&copy; {new Date().getFullYear()} Atlas. Research support only; not financial advice.</p>
+            <p>Built with LangGraph, hybrid retrieval and cited evidence.</p>
+          </Container>
+        </div>
       </div>
     </footer>
   );

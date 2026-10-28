@@ -1,16 +1,29 @@
 @import "tailwindcss";
 
 /* ---- Design tokens (Tailwind 4: @theme exposes them as utilities) -----------
-   Light, professional palette: slate text on white / slate-50, an indigo accent,
-   and emerald / amber / rose for positive / neutral / negative (and low / medium /
-   high severity). Built-in Tailwind colour scales are used directly in markup
-   (shared class recipes live in components/ui/styles.ts); these tokens cover the
-   few app-specific values. */
-@theme {
+   Two surfaces: a deep "ink" for the hero, product shots and closing sections, and
+   white / slate-50 for reading. Indigo is the accent; emerald / amber / rose mean
+   positive / neutral / negative (and low / medium / high severity). Shared class
+   recipes live in components/ui/styles.ts. */
+@theme inline {
   --font-sans:
-    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
+  --font-display: var(--font-instrument), ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@theme {
+  --color-ink-950: #05070d;
+  --color-ink-900: #0a0e1a;
+  --color-ink-850: #0e1322;
+  --color-ink-800: #151b2e;
+  --color-ink-700: #222a42;
+
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+  --animate-marquee: marquee 48s linear infinite;
+  --animate-scan: scan 3.2s ease-in-out infinite;
+  --animate-blink: blink 2.4s ease-in-out infinite;
 
   @keyframes pulse-soft {
     0%,
@@ -21,6 +34,71 @@
       opacity: 0.45;
     }
   }
+
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* A progress bar that fills, holds, then resets: "this analyst is working". */
+  @keyframes scan {
+    0% {
+      width: 8%;
+    }
+    70%,
+    100% {
+      width: 100%;
+    }
+  }
+
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.25;
+    }
+  }
+}
+
+/* Faint grid lines that fade out towards the edges (for ink surfaces). */
+@utility bg-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.055) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 0%, #000 35%, transparent 100%);
+}
+
+/* The same grid in slate, for light surfaces. */
+@utility bg-grid-light {
+  background-image:
+    linear-gradient(to right, rgb(15 23 42 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(15 23 42 / 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 30%, transparent 100%);
+}
+
+/* Gradient text for the one emphasised phrase in a headline. */
+@utility text-shine {
+  background-image: linear-gradient(100deg, #c7d2fe 0%, #a5b4fc 30%, #7dd3fc 65%, #6ee7b7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility text-shine-dark {
+  background-image: linear-gradient(100deg, #4338ca 0%, #4f46e5 40%, #0284c7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Fade the ends of a horizontally scrolling strip. */
+@utility mask-fade-x {
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
 }
 
 @layer base {
@@ -31,13 +109,19 @@
 
   body {
     @apply bg-white font-sans text-slate-900 antialiased;
+    font-feature-settings: "cv11", "ss01";
   }
 
   /* Visible, consistent focus ring for keyboard users. */
   :focus-visible {
-    outline: 2px solid var(--color-indigo-600);
+    outline: 2px solid var(--color-indigo-500);
     outline-offset: 2px;
     border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-indigo-200);
+    color: var(--color-slate-900);
   }
 
   /* Native <details> accordions: hide the default marker; we draw our own chevron. */
@@ -60,8 +144,33 @@
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/* ---- Scroll reveal -----------------------------------------------------------
+   Pure CSS, progressive: browsers with scroll-driven animations fade sections in
+   as they enter; everywhere else (and with reduced motion) content is simply shown. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 30%;
+    }
+  }
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 

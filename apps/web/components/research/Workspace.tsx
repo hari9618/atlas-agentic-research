@@ -18,8 +18,8 @@ import { ExportButton } from "@/components/report/ExportButton";
 import { PrintableReport } from "@/components/report/PrintableReport";
 import { StructuredReport } from "@/components/report/StructuredReport";
 import { Badge } from "@/components/ui/Badge";
-import { Icon } from "@/components/ui/Icon";
-import { btn, card, cardBase, cx } from "@/components/ui/styles";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import { btn, card, cardBase, cx, eyebrow } from "@/components/ui/styles";
 import { CorpusPanel } from "./CorpusPanel";
 import { IDLE_STEPS, ProgressStepper, type StepId, type Steps } from "./ProgressStepper";
 import { QueryBox } from "./QueryBox";
@@ -345,30 +345,40 @@ function doneSpecialists(): Partial<Steps> {
 }
 
 function EmptyState({ onSample }: { onSample: () => void }) {
-  const steps = [
-    ["Plan", "Atlas scopes your question and picks what to research."],
-    ["Research", "Four analysts cover financials, news, market and risk in parallel."],
-    ["Debate", "A bull and a bear argue both sides of the evidence."],
-    ["Review", "You get a cited draft to approve or send back with changes."],
+  const steps: [IconName, string, string][] = [
+    ["target", "Plan", "Atlas scopes your question and picks what to research."],
+    ["users", "Research", "Four analysts cover financials, news, market and risk in parallel."],
+    ["scale", "Debate", "A bull and a bear argue both sides of the evidence."],
+    ["check", "Review", "You get a cited draft to approve or send back with changes."],
   ];
   return (
-    <section className={cx(card, "p-5 sm:p-6")}>
-      <h2 className="text-base font-semibold text-slate-900">What happens when you run a question</h2>
-      <ol className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {steps.map(([t, d], i) => (
-          <li key={t} className="flex gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold text-indigo-700">
-              {i + 1}
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{t}</p>
-              <p className="mt-0.5 text-sm text-slate-600">{d}</p>
+    <section aria-labelledby="empty-title" className={cx(card, "p-5 sm:p-7")}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className={eyebrow}>What happens next</p>
+          <h2 id="empty-title" className="mt-2 text-lg font-semibold tracking-tight text-slate-950">
+            Four steps from question to reviewed brief
+          </h2>
+        </div>
+        <span className="font-mono text-xs text-slate-400">~2 min per run</span>
+      </div>
+      <ol className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {steps.map(([icon, t, d], i) => (
+          <li key={t} className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4">
+            <div className="flex items-center justify-between">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200">
+                <Icon name={icon} className="h-4.5 w-4.5" />
+              </span>
+              <span className="font-display text-2xl text-slate-300">{String(i + 1).padStart(2, "0")}</span>
             </div>
+            <p className="mt-4 text-sm font-semibold text-slate-950">{t}</p>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">{d}</p>
           </li>
         ))}
       </ol>
-      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-5">
         <button type="button" onClick={onSample} className={btn.secondary}>
+          <Icon name="file" />
           Preview a sample report
         </button>
         <span className="text-xs text-slate-500">Progress streams in live as each analyst finishes.</span>

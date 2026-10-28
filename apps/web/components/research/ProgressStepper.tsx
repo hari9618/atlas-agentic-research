@@ -83,7 +83,7 @@ function Stage({
   return (
     <li
       className={cx(
-        "rounded-lg border p-3 transition-colors",
+        "rounded-xl border p-3 transition-colors",
         status === "active" && "border-indigo-300 bg-indigo-50/60",
         status === "done" && "border-emerald-200 bg-white",
         status === "idle" && "border-slate-200 bg-white",
@@ -138,14 +138,16 @@ export function ProgressStepper({
     <section aria-labelledby="progress-title" className={cx(card, "p-4 sm:p-5")}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0" aria-live="polite">
-          <h2 id="progress-title" className="text-sm font-semibold text-slate-900">
+          <h2 id="progress-title" className="text-base font-semibold tracking-tight text-slate-950">
             {headline}
           </h2>
           {activity[0] && <p className="mt-0.5 truncate text-xs text-slate-500">{activity[0]}</p>}
         </div>
         {mm && (
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 tabular-nums">
-            {mm} elapsed
+          <span className="flex items-center gap-2 rounded-full bg-ink-950 px-3 py-1 font-mono text-xs text-slate-200 tabular-nums">
+            <span aria-hidden className="h-1.5 w-1.5 animate-blink rounded-full bg-emerald-400" />
+            {mm}
+            <span className="sr-only"> elapsed</span>
           </span>
         )}
       </div>

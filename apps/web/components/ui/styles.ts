@@ -5,22 +5,27 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 }
 
 const btnBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50";
 
 export const btn = {
-  primary: `${btnBase} bg-indigo-600 px-4 py-2.5 text-sm text-white shadow-sm hover:bg-indigo-700`,
-  secondary: `${btnBase} border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 hover:border-slate-400 hover:bg-slate-50`,
+  primary: `${btnBase} bg-indigo-600 px-4 py-2.5 text-sm text-white shadow-[0_1px_0_rgb(255_255_255/0.2)_inset,0_6px_16px_-6px_rgb(79_70_229/0.6)] hover:bg-indigo-500`,
+  secondary: `${btnBase} border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-xs hover:border-slate-400 hover:bg-slate-50`,
   ghost: `${btnBase} px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900`,
   small: `${btnBase} border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50`,
-  lg: "px-5 py-3 text-base",
+  /** Bright pill for ink (dark) surfaces. */
+  light: `${btnBase} bg-white px-4 py-2.5 text-sm text-ink-950 shadow-[0_8px_30px_-8px_rgb(165_180_252/0.55)] hover:bg-indigo-50`,
+  /** Outline pill for ink (dark) surfaces. */
+  ghostDark: `${btnBase} border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white backdrop-blur hover:border-white/30 hover:bg-white/10`,
+  lg: "px-6 py-3 text-base",
 };
 
 /** Card shape only; pair with your own border + background colours. */
-export const cardBase = "rounded-xl border";
-export const card = `${cardBase} border-slate-200 bg-white`;
+export const cardBase = "rounded-2xl border";
+export const card = `${cardBase} border-slate-200/80 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04)]`;
 export const cardPad = "p-5 sm:p-6";
 
-export const eyebrow = "text-xs font-semibold uppercase tracking-wider text-indigo-600";
+export const eyebrow = "font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-indigo-600";
+export const eyebrowDark = "font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-indigo-300";
 
 export const chip =
   "inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700";

@@ -1,5 +1,5 @@
 import { Container } from "@/components/ui/Container";
-import { Icon } from "@/components/ui/Icon";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import { cx } from "@/components/ui/styles";
 import {
   CitationsVisual,
@@ -11,98 +11,85 @@ import {
 } from "./FeatureVisuals";
 import { SectionHeading } from "./SectionHeading";
 
-const FEATURES: { title: string; body: string; bullets: string[]; visual: React.ReactNode }[] = [
+// Bento layout on a 6-column grid: two wide cards, three narrow, one wide footer card.
+const FEATURES: { icon: IconName; title: string; body: string; visual: React.ReactNode; span: string; wide?: boolean }[] = [
   {
-    title: "Research any company",
-    body: "Public or private, a market leader or a startup. Atlas pulls live web results, SEC filings, market data and recent news, plus anything you upload.",
-    bullets: [
-      "SEC EDGAR filings and stock data for listed companies",
-      "News and web coverage for private companies",
-      "Your own decks, reports and notes, searchable on the next run",
-    ],
-    visual: <SourcesVisual />,
-  },
-  {
+    icon: "link",
     title: "Every claim cited",
-    body: "Numbers and statements in the report link to the source they came from. A guardrail checks coverage and lowers the confidence score when evidence is thin.",
-    bullets: [
-      "Inline source tags you can click through",
-      "Web results are marked so they aren't mistaken for primary sources",
-      "An explicit list of what we're not sure about",
-    ],
+    body: "Numbers and statements link to the source they came from. A guardrail checks coverage and lowers the confidence score when evidence is thin.",
     visual: <CitationsVisual />,
+    span: "lg:col-span-3",
   },
   {
+    icon: "globe",
+    title: "Research any company",
+    body: "Public or private, US or Indian, a market leader or a startup. Live web, SEC filings, market data, news, plus anything you upload.",
+    visual: <SourcesVisual />,
+    span: "lg:col-span-3",
+  },
+  {
+    icon: "scale",
     title: "Bull vs bear stress test",
-    body: "Before anything is written, one agent argues the optimistic case and another the cautious one. A judge weighs both, so the report doesn't just tell you what you want to hear.",
-    bullets: [
-      "Both sides argued from the same evidence",
-      "The stance (positive, neutral or cautious) comes out of the debate",
-      "The full transcript is in the report for anyone who wants to check",
-    ],
+    body: "Both sides are argued from the same evidence, and a judge weighs them, so the report doesn't just tell you what you want to hear.",
     visual: <DebateVisual />,
+    span: "lg:col-span-2",
   },
   {
+    icon: "edit",
     title: "Human review loop",
-    body: "Nothing is final until you say so. Approve the draft or tell Atlas what to change; it researches your feedback and writes a new revision.",
-    bullets: [
-      "One-click requests like \"deeper financials\" or \"focus on risks\"",
-      "Each revision is numbered so you can see what changed",
-      "Up to three rounds of changes per report",
-    ],
+    body: "Nothing is final until you approve it. Ask for changes and Atlas researches your feedback, up to three revisions.",
     visual: <ReviewVisual />,
+    span: "lg:col-span-2",
   },
   {
+    icon: "target",
     title: "Competitor intelligence",
-    body: "Ask how a company stacks up and get a side-by-side view: who the competitors are, how they compare and how much of a threat each one is.",
-    bullets: [
-      "Threat level for each competitor",
-      "Strengths and weaknesses in plain words",
-      "Market position and what to watch next",
-    ],
+    body: "Who the rivals are, how they compare, and how much of a threat each one is, in plain words.",
     visual: <CompetitorsVisual />,
+    span: "lg:col-span-2",
   },
   {
-    title: "Export to PDF",
-    body: "Download a clean, paginated brief to share with a partner, an investment committee or your team.",
-    bullets: [
-      "Masthead with company, stance and confidence",
-      "Every section in order, with sources at the end",
-      "Prints cleanly from any modern browser",
-    ],
+    icon: "download",
+    title: "Export a board-ready PDF",
+    body: "A clean, paginated brief with a masthead, every section in order and sources at the end. Share it with a partner, an investment committee or your team.",
     visual: <PdfVisual />,
+    span: "lg:col-span-6",
+    wide: true,
   },
 ];
 
 export function Features() {
   return (
-    <section id="features" aria-labelledby="features-title" className="scroll-mt-20 border-y border-slate-200 bg-slate-50 py-20 sm:py-24">
+    <section id="features" aria-labelledby="features-title" className="scroll-mt-24 bg-white py-24 sm:py-28">
       <Container>
-        <SectionHeading
-          id="features-title"
-          kicker="Features"
-          title="Built to be checked, not just believed"
-          intro="Atlas is designed around one idea: you should be able to see where every conclusion came from."
-        />
-        <div className="mt-14 space-y-16 sm:space-y-20">
-          {FEATURES.map((f, i) => (
-            <div key={f.title} className="grid items-center gap-8 md:grid-cols-2 md:gap-14">
-              <div className={cx(i % 2 === 1 && "md:order-2")}>
-                <h3 className="text-2xl font-semibold tracking-tight text-slate-900">{f.title}</h3>
-                <p className="mt-3 text-base leading-relaxed text-slate-600">{f.body}</p>
-                <ul className="mt-5 space-y-2.5">
-                  {f.bullets.map((b) => (
-                    <li key={b} className="flex gap-3 text-sm text-slate-700">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
-                        <Icon name="check" className="h-3 w-3" strokeWidth={3} />
-                      </span>
-                      {b}
-                    </li>
-                  ))}
-                </ul>
+        <div className="reveal">
+          <SectionHeading
+            id="features-title"
+            kicker="Features"
+            title="Built to be checked,"
+            accent="not just believed."
+            intro="Atlas is designed around one idea: you should be able to see where every conclusion came from."
+          />
+        </div>
+        <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          {FEATURES.map((f) => (
+            <article
+              key={f.title}
+              className={cx(
+                "reveal group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-linear-to-b from-slate-50 to-white p-6 transition-shadow hover:shadow-[0_30px_60px_-30px_rgb(15_23_42/0.25)] sm:p-7",
+                f.span,
+                f.wide && "sm:col-span-2 lg:grid lg:grid-cols-[1fr_1.1fr] lg:items-center lg:gap-10",
+              )}
+            >
+              <div>
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200">
+                  <Icon name={f.icon} className="h-4.5 w-4.5" />
+                </span>
+                <h3 className="mt-5 text-xl font-semibold tracking-tight text-slate-950">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.body}</p>
               </div>
-              <div className={cx("min-w-0", i % 2 === 1 && "md:order-1")}>{f.visual}</div>
-            </div>
+              <div className={cx("min-w-0", f.wide ? "mt-6 lg:mt-0" : "mt-6 flex-1")}>{f.visual}</div>
+            </article>
           ))}
         </div>
       </Container>

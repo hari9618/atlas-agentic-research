@@ -54,21 +54,24 @@ function CellView({ c, strong }: { c: Cell; strong?: boolean }) {
 
 export function Comparison() {
   return (
-    <section id="compare" aria-labelledby="compare-title" className="scroll-mt-20 border-t border-slate-200 bg-slate-50 py-20 sm:py-24">
+    <section id="compare" aria-labelledby="compare-title" className="scroll-mt-24 bg-white py-24 sm:py-28">
       <Container>
-        <SectionHeading
-          id="compare-title"
-          kicker="Compare"
-          title="Faster than an analyst. More careful than a chatbot."
-          intro="Chatbots are quick but unsourced. Analysts are thorough but slow. Atlas aims for both speed and receipts."
-        />
+        <div className="reveal">
+          <SectionHeading
+            id="compare-title"
+            kicker="Compare"
+            title="Faster than an analyst."
+            accent="More careful than a chatbot."
+            intro="Chatbots are quick but unsourced. Analysts are thorough but slow. Atlas aims for both speed and receipts."
+          />
+        </div>
 
         {/* Desktop table */}
-        <div className="mt-12 hidden overflow-hidden rounded-xl border border-slate-200 bg-white md:block">
+        <div className="reveal mt-14 hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_30px_80px_-40px_rgb(15_23_42/0.25)] md:block">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-200">
-                <th scope="col" className="w-[28%] px-5 py-4 text-sm font-medium text-slate-500">
+                <th scope="col" className="w-[28%] bg-slate-50/70 px-6 py-5 text-sm font-medium text-slate-500">
                   <span className="sr-only">Capability</span>
                 </th>
                 {COLS.map((col, i) => (
@@ -76,11 +79,20 @@ export function Comparison() {
                     key={col}
                     scope="col"
                     className={cx(
-                      "px-5 py-4 text-sm font-semibold",
-                      i === 0 ? "bg-indigo-50 text-indigo-800" : "text-slate-700",
+                      "px-6 py-5 text-sm font-semibold",
+                      i === 0 ? "bg-ink-950 text-white" : "bg-slate-50/70 text-slate-700",
                     )}
                   >
-                    {col}
+                    {i === 0 ? (
+                      <span className="flex items-center gap-2">
+                        <span className="font-display text-xl font-normal">Atlas</span>
+                        <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 font-mono text-[10px] tracking-wider text-indigo-200 uppercase">
+                          You are here
+                        </span>
+                      </span>
+                    ) : (
+                      col
+                    )}
                   </th>
                 ))}
               </tr>
@@ -88,9 +100,9 @@ export function Comparison() {
             <tbody className="divide-y divide-slate-100">
               {ROWS.map((r) => (
                 <tr key={r.label}>
-                  <th scope="row" className="px-5 py-3.5 text-sm font-medium text-slate-900">{r.label}</th>
+                  <th scope="row" className="px-6 py-4 text-sm font-medium text-slate-900">{r.label}</th>
                   {r.cells.map((c, i) => (
-                    <td key={i} className={cx("px-5 py-3.5", i === 0 && "bg-indigo-50/60")}>
+                    <td key={i} className={cx("px-6 py-4", i === 0 && "bg-indigo-50/50")}>
                       <CellView c={c} strong={i === 0} />
                     </td>
                   ))}
@@ -101,9 +113,9 @@ export function Comparison() {
         </div>
 
         {/* Phone: one card per capability */}
-        <ul className="mt-10 space-y-3 md:hidden">
+        <ul className="mt-12 space-y-3 md:hidden">
           {ROWS.map((r) => (
-            <li key={r.label} className="rounded-xl border border-slate-200 bg-white p-4">
+            <li key={r.label} className="rounded-2xl border border-slate-200/80 bg-white p-4">
               <p className="text-sm font-semibold text-slate-900">{r.label}</p>
               <dl className="mt-3 space-y-2">
                 {r.cells.map((c, i) => (

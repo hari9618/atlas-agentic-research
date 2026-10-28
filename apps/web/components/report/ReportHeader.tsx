@@ -56,10 +56,10 @@ export function ReportHeader({
             <RevisionBadge revision={revision} />
             {status}
           </div>
-          <p className="mt-4 text-xs font-semibold tracking-wider text-indigo-600 uppercase">
+          <p className="mt-5 font-mono text-[11px] tracking-[0.18em] text-indigo-600 uppercase">
             Due-diligence brief
           </p>
-          <H className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+          <H className="mt-1.5 font-display text-4xl leading-[1.05] tracking-tight text-slate-950 sm:text-5xl">
             {s.company || "Research brief"}
           </H>
           {s.headline && (
@@ -69,7 +69,7 @@ export function ReportHeader({
           )}
         </div>
         {conf != null && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 self-start">
+          <div className="self-start rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">
             <ConfidenceMeter value={conf} />
           </div>
         )}

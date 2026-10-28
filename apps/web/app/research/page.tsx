@@ -21,16 +21,18 @@ export default async function ResearchPage({
 
   return (
     <div className="min-h-screen bg-slate-50 print:min-h-0 print:bg-white">
-      <header className="screen-only sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <header className="screen-only sticky top-0 z-40 border-b border-white/[0.08] bg-ink-950 text-white">
         <Container className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Wordmark />
-            <span aria-hidden className="hidden h-5 w-px bg-slate-200 sm:block" />
-            <span className="hidden text-sm font-medium text-slate-600 sm:block">Research workspace</span>
+            <Wordmark tone="dark" />
+            <span aria-hidden className="hidden h-5 w-px bg-white/15 sm:block" />
+            <span className="hidden font-mono text-[11px] tracking-[0.18em] text-slate-400 uppercase sm:block">
+              Research workspace
+            </span>
           </div>
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
           >
             <Icon name="arrowLeft" />
             Back to site

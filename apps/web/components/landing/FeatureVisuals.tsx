@@ -9,7 +9,12 @@ function Frame({ children, className }: { children: React.ReactNode; className?:
   return (
     <div
       aria-hidden
-      className={cx(cardBase, "border-slate-200 p-5 shadow-lg shadow-slate-900/5", !className?.includes("bg-") && "bg-white", className)}
+      className={cx(
+        cardBase,
+        "border-slate-200/80 p-4 shadow-[0_12px_32px_-16px_rgb(15_23_42/0.18)] sm:p-5",
+        !className?.includes("bg-") && "bg-white",
+        className,
+      )}
     >
       {children}
     </div>
@@ -96,10 +101,10 @@ export function ReviewVisual() {
       <p className="text-xs font-semibold tracking-wider text-indigo-600 uppercase">Your review</p>
       <p className="mt-1 text-base font-semibold text-slate-900">Is this report ready?</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <span className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">
+        <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">
           <Icon name="check" /> Approve
         </span>
-        <span className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800">
+        <span className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800">
           <Icon name="edit" /> Request changes
         </span>
       </div>

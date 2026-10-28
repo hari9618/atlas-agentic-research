@@ -1,4 +1,7 @@
+import Link from "next/link";
 import { Container } from "@/components/ui/Container";
+import { Icon } from "@/components/ui/Icon";
+import { btn, cx } from "@/components/ui/styles";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { SectionHeading } from "./SectionHeading";
 
@@ -31,10 +34,19 @@ const FAQS: { q: string; a: string }[] = [
 
 export function Faq() {
   return (
-    <section id="faq" aria-labelledby="faq-title" className="scroll-mt-20 py-20 sm:py-24">
-      <Container size="narrow">
-        <SectionHeading id="faq-title" kicker="FAQ" title="Straight answers" center />
-        <div className="mt-10 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-5 sm:px-6">
+    <section id="faq" aria-labelledby="faq-title" className="scroll-mt-24 border-t border-slate-200/70 bg-slate-50 py-24 sm:py-28">
+      <Container className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+        <div className="reveal lg:sticky lg:top-28 lg:self-start">
+          <SectionHeading id="faq-title" kicker="FAQ" title="Straight" accent="answers." />
+          <p className="mt-5 text-base leading-relaxed text-slate-600">
+            How Atlas sources, cites and scores its research, and what it is not.
+          </p>
+          <Link href="/research" className={cx(btn.secondary, "mt-7")}>
+            Try it on a company
+            <Icon name="arrowRight" />
+          </Link>
+        </div>
+        <div className="reveal divide-y divide-slate-200 rounded-3xl border border-slate-200/80 bg-white px-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] sm:px-7">
           {FAQS.map((f, i) => (
             <Disclosure
               key={f.q}
