@@ -128,24 +128,29 @@ def test_web_search_does_not_retry_auth_errors(monkeypatch):
 def test_stock_quote_degrades_to_empty_after_retries(monkeypatch):
     calls = []
 
-    def fake_get(url, timeout=None):
-        calls.append(1)
-        raise httpx.ConnectTimeout("stooq down")
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        raise httpx.ConnectTimeout("quote source down")
 
     monkeypatch.setattr(MARKET.httpx, "get", fake_get)
     assert MARKET.stock_quote("ACME") == {}
-    assert len(calls) == 3  # TOOL_ATTEMPTS
+    # US symbol: Yahoo retried TOOL_ATTEMPTS times, then the Stooq fallback the same.
+    assert sum("yahoo" in u for u in calls) == 3
+    assert sum("stooq" in u for u in calls) == 3
 
 
-def test_stock_quote_parses_csv(monkeypatch):
+def test_stock_quote_falls_back_to_stooq_csv_for_us(monkeypatch):
     csv = "Symbol,Date,Time,Open,High,Low,Close,Volume\nACME.US,2026-10-27,22:00,10,12,9,11,1000"
 
-    def fake_get(url, timeout=None):
+    def fake_get(url, **kwargs):
+        if "yahoo" in url:  # Yahoo unavailable (non-transient) → Stooq answers
+            return httpx.Response(404, request=httpx.Request("GET", url))
         return httpx.Response(200, request=httpx.Request("GET", url), text=csv)
 
     monkeypatch.setattr(MARKET.httpx, "get", fake_get)
     q = MARKET.stock_quote("acme")
     assert q["ticker"] == "ACME" and q["close"] == "11" and q["date"] == "2026-10-27"
+    assert q["source"] == "Stooq"
 
 
 def test_chat_retries_transient_llm_errors(monkeypatch):

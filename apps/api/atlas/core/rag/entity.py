@@ -60,6 +60,11 @@ def entity_terms(target: str, ticker: str = "") -> EntityTerms | None:
     if len(name.split()) > _MAX_NAME_WORDS:
         name = ""
     tick = (ticker or "").strip().upper().lstrip("$")
+    # Exchange-suffixed symbols (RELIANCE.NS, 500325.BO) are not how the press refers
+    # to a company, and their bases are often ordinary words — "RELIANCE" would also
+    # match an all-caps "RELIANCE POWER" headline. Match those companies by name only.
+    if "." in tick:
+        tick = ""
     if not (name or tick):
         return None
     return EntityTerms(name=name, ticker=tick)

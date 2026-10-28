@@ -70,7 +70,6 @@ _NOT_NAME = {
     "invest", "research", "review", "about", "please", "my", "we", "our", "us", "ceo",
 }
 _CAP_RUN = re.compile(r"[A-Z][\w&.\-]*(?:\s+[A-Z][\w&.\-]*)*")
-_TICKER = re.compile(r"^[A-Z]{1,5}(?:[.\-][A-Z]{1,2})?$")
 
 
 def guess_target(query: str) -> str:
@@ -89,8 +88,9 @@ def guess_target(query: str) -> str:
 
 
 def _clean_ticker(value) -> str:
-    t = str(value or "").strip().upper().lstrip("$")
-    return t if _TICKER.match(t) else ""
+    from ..tools.symbols import clean_ticker  # one symbol convention for every tool
+
+    return clean_ticker(value)
 
 
 def _llm_plan(query: str) -> dict:
@@ -99,9 +99,13 @@ def _llm_plan(query: str) -> dict:
         f'desk will investigate this question:\n"{query}"\n\n'
         "Return ONLY a JSON object:\n"
         '{"target": "the company or entity being analysed (official name)", '
-        '"ticker": "its stock ticker ONLY if it is a publicly traded company and you are '
-        'confident of the symbol, otherwise an empty string", '
-        '"focus_areas": ["3-5 concise focus areas"]}',
+        '"ticker": "its Yahoo Finance symbol ONLY if it is a publicly traded company and '
+        'you are confident of it, otherwise an empty string", '
+        '"focus_areas": ["3-5 concise focus areas"]}\n\n'
+        "Ticker format (Yahoo Finance): US listings have no suffix (AAPL, BRK-B, and US "
+        "ADRs such as INFY or HDB); Indian companies use the exchange suffix, preferring "
+        "NSE (RELIANCE.NS, TCS.NS, HDFCBANK.NS) or BSE (500325.BO); other markets use "
+        "their suffix (VOD.L, 7203.T). Private companies and startups get an empty string.",
         temperature=0.0,
         run_name="supervisor.plan",
     )

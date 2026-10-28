@@ -57,10 +57,18 @@ def _chunk(source: str, key: str, ordinal: int, text: str, title: str, url: str 
 
 
 def sec_evidence(ticker: str, *, pieces: int = 3) -> list[RetrievedChunk]:
-    """Excerpt of the latest 10-K (business section), split into citable pieces."""
+    """Excerpt of the latest 10-K / 20-F (business section), split into citable pieces.
+
+    Only US-listed symbols have EDGAR filings; for ``RELIANCE.NS`` and the like the
+    fundamentals come from web search, company news and uploaded annual reports.
+    """
     if _offline() or not ticker:
         return []
     from ..tools import sec as sec_tool  # module ref so tests can patch the tool
+    from ..tools.symbols import is_us_listed
+
+    if not is_us_listed(ticker):
+        return []
 
     res = sec_tool.sec_filing_excerpt(ticker, max_chars=_PIECE_CHARS * pieces)
     text = (res.get("excerpt") or "").strip() if res else ""
@@ -86,12 +94,21 @@ def quote_evidence(ticker: str) -> list[RetrievedChunk]:
     q = market_tool.stock_quote(ticker)
     if not q or not q.get("close"):
         return []
-    parts = [f"{k} {q[k]}" for k in ("open", "high", "low", "close", "volume") if q.get(k)]
-    text = (f"Latest daily stock quote for {q.get('ticker', ticker.upper())} "
+    sym = q.get("ticker", ticker.upper())
+    cur = f" {q['currency']}" if q.get("currency") else ""
+    labels = {"close": "last price", "previous_close": "previous close", "open": "open",
+              "high": "day high", "low": "day low", "volume": "volume"}
+    parts = [f"{label} {q[k]}{'' if k == 'volume' else cur}"
+             for k, label in labels.items() if q.get(k)]
+    if q.get("week52_low") and q.get("week52_high"):
+        parts.append(f"52-week range {q['week52_low']}–{q['week52_high']}{cur}")
+    who = f"{q['name']} ({sym})" if q.get("name") else sym
+    where = f" on {q['exchange']}" if q.get("exchange") else ""
+    text = (f"Latest daily stock quote for {who}{where} "
             f"(trading date {q.get('date') or 'unknown'}): " + ", ".join(parts) + ".")
-    return [_chunk("stock_data", ticker.upper(), 0, text,
-                   f"{q.get('ticker', ticker.upper())} daily quote (Stooq)",
-                   f"https://stooq.com/q/?s={ticker.lower()}.us", trading_date=q.get("date"))]
+    source = q.get("source") or "market data"
+    return [_chunk("stock_data", sym, 0, text, f"{sym} daily quote ({source})",
+                   q.get("url", ""), trading_date=q.get("date"))]
 
 
 def news_evidence(company: str, *, ticker: str = "",

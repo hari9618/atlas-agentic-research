@@ -38,9 +38,11 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
 
 @mcp.tool()
 def sec_filing_excerpt(ticker: str, form: str = "10-K", max_chars: int = 2000) -> dict:
-    """Pull a short excerpt from a public company's latest SEC filing by ticker.
+    """Pull a short excerpt from a US-listed company's latest SEC annual filing.
 
-    Returns {ticker, title, url, excerpt} or {} if nothing is found. Use for
+    Uses the 10-K, falling back to the 20-F filed by foreign companies with a US
+    listing (e.g. INFY, HDB). Returns {ticker, title, url, form, excerpt} or {} if
+    nothing is found (always {} for non-US symbols such as RELIANCE.NS). Use for
     authoritative financials and official disclosures.
     """
     return _sec_filing_excerpt(ticker, form=form, max_chars=max_chars)
@@ -48,9 +50,11 @@ def sec_filing_excerpt(ticker: str, form: str = "10-K", max_chars: int = 2000) -
 
 @mcp.tool()
 def stock_quote(ticker: str) -> dict:
-    """Get the latest daily quote (close, volume, date) for a US stock ticker.
+    """Get the latest daily quote for a stock in any market.
 
-    Free, no API key (via Stooq). Returns {} on failure. Use for market/price signals.
+    Use the Yahoo Finance symbol: AAPL (US), RELIANCE.NS / 500325.BO (India NSE/BSE),
+    VOD.L (London). Returns price, currency, exchange, day range and 52-week range,
+    or {} on failure. Free, no API key. Use for market/price signals.
     """
     return _stock_quote(ticker)
 

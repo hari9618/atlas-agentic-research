@@ -74,7 +74,8 @@ def test_quote_evidence_is_one_cited_sentence(monkeypatch):
                                                           "close": "11", "volume": "1000"})
     chunks = te.tool_evidence_for("market", target="Acme", ticker="ACME")
     assert len(chunks) == 1
-    assert chunks[0].chunk.source == "stock_data" and "close 11" in chunks[0].text
+    assert chunks[0].chunk.source == "stock_data" and "last price 11" in chunks[0].text
+    assert "volume 1000" in chunks[0].text
 
 
 def test_sec_evidence_splits_excerpt_into_authoritative_chunks(monkeypatch):
