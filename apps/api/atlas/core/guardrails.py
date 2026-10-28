@@ -8,7 +8,12 @@ better to under-claim than to present an ungrounded number.
 
 from __future__ import annotations
 
+import re
+
 from .rag.provenance import is_derived_citation
+
+# A citation label is "Title (source#n) [marker]"; "source#n" identifies the chunk.
+_KEY = re.compile(r"\(([\w.\-]+#\d+)\)")
 
 
 def _distinct_citations(findings: list[dict]) -> set[str]:
@@ -16,7 +21,17 @@ def _distinct_citations(findings: list[dict]) -> set[str]:
 
 
 def _present(citation: str, report: str) -> bool:
-    return citation in report or citation.split(" (")[0] in report
+    """Is this citation referenced in the report — by full label, title, or key?
+
+    The writer may cite with the full label, its title, or just the compact key
+    (``[company_news#1]``). All three are the same reference; matching only the first
+    two scored a fully cited web-sourced report at 0% coverage and slashed its
+    confidence. The key match is exact: ``company_news#1`` ≠ ``company_news#10``.
+    """
+    if citation in report or citation.split(" (")[0] in report:
+        return True
+    m = _KEY.search(citation)
+    return bool(m) and re.search(rf"(?<![\w]){re.escape(m.group(1))}(?!\d)", report) is not None
 
 
 def citation_coverage(report: str, findings: list[dict]) -> float:

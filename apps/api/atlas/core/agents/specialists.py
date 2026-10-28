@@ -15,6 +15,7 @@ import re
 
 from ..memory.procedural import ProceduralMemory
 from ..rag.crag import corrective_retrieve
+from ..rag.entity import entity_terms
 from ..rag.tool_evidence import tool_evidence_for
 from ..rag.types import RetrievedChunk
 from ..rag.web_evidence import web_evidence_about
@@ -162,6 +163,7 @@ def _make_specialist(name: str, focus: str, role: str):
         result = corrective_retrieve(
             get_index(), f"{target or query} {focus}", top_k=4,
             web_fallback=web_evidence_about(target, ticker),
+            entity=entity_terms(target, ticker) if target else None,
         )
         if result.used_web_fallback:
             log.info("%s fell back to web evidence", name)

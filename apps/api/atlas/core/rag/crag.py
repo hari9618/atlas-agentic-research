@@ -127,19 +127,54 @@ def _interleave(local: list, web: list) -> list:
     return out
 
 
+_coverage_cache: dict[tuple, bool] = {}
+
+
+def corpus_covers(index: HybridIndex, entity) -> bool:
+    """Does any ingested document mention this company at all?
+
+    Checked at the corpus level, not per retrieved chunk: a user's competitor profile
+    may say "Helios" rather than "Helios Robotics", and must still be used for Helios
+    research. Cached per (corpus size, entity) — the corpus only changes on ingest.
+    """
+    from .entity import mentions_entity
+
+    key = (id(index), len(index.chunks), entity.name, entity.ticker)
+    if key not in _coverage_cache:
+        _coverage_cache[key] = any(
+            mentions_entity(f"{c.title} {c.text}", entity) for c in index.chunks.values()
+        )
+    return _coverage_cache[key]
+
+
 def corrective_retrieve(
     index: HybridIndex,
     query: str,
     *,
     top_k: int = 5,
     web_fallback=None,
+    entity=None,
 ) -> CragResult:
     """Retrieve with one self-correction round.
 
     Args:
         web_fallback: optional callable(query) -> list[RetrievedChunk] used when
             local evidence is INCORRECT (wired to the web_search MCP tool in M3).
+        entity: optional ``EntityTerms`` for the company being researched. If no
+            ingested document mentions it, local evidence can only be about some
+            other company — however well its vocabulary ("revenue", "customers")
+            overlaps the query — so grading is skipped and the web leads alone.
     """
+    if entity is not None and not corpus_covers(index, entity):
+        web = []
+        if web_fallback is not None:
+            try:
+                web = web_fallback(query) or []
+            except Exception as exc:  # pragma: no cover
+                log.warning("web_fallback failed: %s", exc)
+        log.info("corpus has no documents on %r — using web evidence only", entity.name)
+        return CragResult(query, web[:top_k], Grade.INCORRECT, used_web_fallback=bool(web))
+
     chunks = index.retrieve(query, top_k=top_k)
     grade = _llm_grade(query, chunks) or _heuristic_grade(query, chunks)
 

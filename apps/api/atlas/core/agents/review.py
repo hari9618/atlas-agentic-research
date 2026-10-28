@@ -21,6 +21,7 @@ from langgraph.types import interrupt
 from ...config import get_settings
 from ..payload import research_payload
 from ..rag.crag import corrective_retrieve
+from ..rag.entity import entity_terms
 from ..rag.web_evidence import web_evidence_about
 from ..resilience import run_or_degrade
 from ..state import ResearchState
@@ -88,9 +89,11 @@ def route_after_review(state: ResearchState) -> str:
 def _followup_findings(state: ResearchState, target: str, feedback: str) -> list[dict]:
     from ..graph import get_index  # late import avoids a cycle
 
-    web = web_evidence_about(target, state.get("ticker") or "")
+    ticker = state.get("ticker") or ""
+    web = web_evidence_about(target, ticker)
     result = corrective_retrieve(get_index(), f"{target} {feedback}", top_k=4,
-                                 web_fallback=web)
+                                 web_fallback=web,
+                                 entity=entity_terms(target, ticker) if target else None)
     chunks = result.chunks
     if not llm_ready():
         cite = chunks[0].chunk.citation() if chunks else "n/a"
