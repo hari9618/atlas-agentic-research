@@ -12,9 +12,11 @@ services:
     # Render provides $PORT; bind to it and to all interfaces.
     startCommand: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health/ready
-    # Deploy only after GitHub Actions CI passes on main (lint, tests, eval gate,
-    # frontend build) — a red build never reaches production.
-    autoDeployTrigger: checksPass
+    # Deploys are driven by GitHub Actions (.github/workflows/deploy.yml): after CI is
+    # green it calls this service's deploy hook for the exact commit, then smoke-tests
+    # it. Render's own "deploy when checks pass" would deadlock with that workflow
+    # (each waits for the other), so auto-deploy stays off.
+    autoDeployTrigger: "off"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
