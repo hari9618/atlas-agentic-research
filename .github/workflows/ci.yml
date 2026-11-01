@@ -81,7 +81,17 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install
-        run: npm ci
+        # On failure, surface npm's own error lines as an annotation (readable on the
+        # run page and via the API) instead of a bare "exit code 1".
+        run: |
+          set -o pipefail
+          echo "node $(node --version) / npm $(npm --version)"
+          npm ci 2>&1 | tee "$RUNNER_TEMP/npm-ci.log" || {
+            msg=$(grep -E '^npm (error|ERR!)' "$RUNNER_TEMP/npm-ci.log" | head -15 \
+              | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=npm ci failed::${msg:-see log}"
+            exit 1
+          }
       - name: Lint
         run: npm run lint
       - name: Typecheck
