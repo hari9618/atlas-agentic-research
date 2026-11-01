@@ -42,12 +42,12 @@ jobs:
       VERCEL_ORG_ID: team_hwBCYgSP1YkMGmJLAcDodMZu
       VERCEL_PROJECT_ID: prj_wAGfsG73LQFnGE3YTcbwEwGWIhwO
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.SHA }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version-file: apps/web/.nvmrc  # same Node/npm as dev: the lockfile is npm-11 format
       # Remote build on Vercel, so the production NEXT_PUBLIC_API_URL set in the
       # Vercel project is the one baked in.
       - name: Deploy (production)
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Wait until Render serves this commit

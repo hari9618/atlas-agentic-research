@@ -28,8 +28,8 @@ jobs:
       ATLAS_OFFLINE_LLM: "1"
       ATLAS_OFFLINE_WEB: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -53,8 +53,8 @@ jobs:
       ATLAS_OFFLINE_LLM: "1"
       ATLAS_OFFLINE_WEB: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -74,10 +74,10 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version-file: apps/web/.nvmrc  # same Node/npm as dev: the lockfile is npm-11 format
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install
