@@ -252,3 +252,13 @@ def test_specialists_ask_for_low_reasoning_effort(monkeypatch):
         "extra_body": {"reasoning_effort": "low"}}
     assert L.get_llm(model="llama-3.1-8b-instant", reasoning_effort="low").model_kwargs == {}
     L.get_llm.cache_clear()
+
+
+# ---- CI eval gate --------------------------------------------------------------------
+
+def test_eval_gate_flags_only_metrics_below_their_floor():
+    from atlas.eval.retrieval_eval import GATE, gate_failures
+
+    healthy = {"hit_rate@k": 1.0, "mrr": 0.79, "context_precision": 0.74}
+    assert gate_failures(healthy) == []
+    assert gate_failures({**healthy, "mrr": 0.5}) == [f"mrr 0.50 < {GATE['mrr']:.2f}"]

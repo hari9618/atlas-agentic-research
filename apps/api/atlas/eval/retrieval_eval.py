@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 
 from ..core.rag.crag import corrective_retrieve
 from ..core.rag.index import HybridIndex
@@ -86,11 +87,26 @@ def run(top_k: int = 5, offline: bool = True) -> dict:
     return {"summary": summary, "rows": rows}
 
 
+# CI regression floors for the OFFLINE configuration (hashing embedder, no neural
+# re-rank) — what GitHub Actions can run with no downloads. Measured there at hit 1.00,
+# MRR 0.79, context precision 0.74; the floors sit a little below so noise can't fail a
+# build, but a real retrieval regression (wrong chunking, broken fusion, a CRAG bug) can.
+GATE = {"hit_rate@k": 0.90, "mrr": 0.70, "context_precision": 0.65}
+
+
+def gate_failures(summary: dict, floors: dict = GATE) -> list[str]:
+    """Metrics below their floor, as readable reasons (empty list = gate passes)."""
+    return [f"{k} {summary.get(k, 0.0):.2f} < {v:.2f}" for k, v in floors.items()
+            if summary.get(k, 0.0) < v]
+
+
 def main() -> None:
     logging.basicConfig(level=logging.WARNING)
     parser = argparse.ArgumentParser(description="Retrieval-quality eval over the golden set.")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--online-embed", action="store_true", help="use bge (downloads model)")
+    parser.add_argument("--gate", action="store_true",
+                        help="exit non-zero if a metric falls below its CI floor")
     args = parser.parse_args()
 
     out = run(top_k=args.top_k, offline=not args.online_embed)
@@ -102,6 +118,12 @@ def main() -> None:
     print(f"  context_precision  : {s['context_precision']:.2f}   (target >= 0.80, rank-aware)")
     print(f"  chunk precision@{args.top_k:<2}: {s['chunk_precision@k']:.2f}")
     print()
+    if args.gate:
+        failures = gate_failures(s)
+        if failures:
+            print("EVAL GATE FAILED: " + "; ".join(failures))
+            sys.exit(1)
+        print("Eval gate passed: " + ", ".join(f"{k} >= {v:.2f}" for k, v in GATE.items()))
 
 
 if __name__ == "__main__":

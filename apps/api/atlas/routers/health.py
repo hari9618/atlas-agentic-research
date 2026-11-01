@@ -9,6 +9,8 @@ health check would spend API credits.)
 
 from __future__ import annotations
 
+import os
+
 import httpx
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
@@ -22,8 +24,13 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 async def health() -> dict:
-    """Liveness — always 200 if the process is serving."""
-    return {"status": "ok", "service": "atlas-api"}
+    """Liveness — always 200 if the process is serving.
+
+    ``commit`` is the git SHA this instance runs (Render sets RENDER_GIT_COMMIT), so
+    the deploy pipeline can wait for exactly the commit it shipped before smoke-testing.
+    """
+    return {"status": "ok", "service": "atlas-api",
+            "commit": os.getenv("RENDER_GIT_COMMIT", "local")}
 
 
 @router.get("/health/ready")

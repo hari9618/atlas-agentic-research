@@ -12,6 +12,9 @@ services:
     # Render provides $PORT; bind to it and to all interfaces.
     startCommand: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health/ready
+    # Deploy only after GitHub Actions CI passes on main (lint, tests, eval gate,
+    # frontend build) — a red build never reaches production.
+    autoDeployTrigger: checksPass
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"

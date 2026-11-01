@@ -1,0 +1,126 @@
+name: Atlas Deploy
+
+# Continuous deployment, gated on CI. Runs only when "Atlas CI" finishes green for a
+# push to main:
+#   1. deploy the Next.js frontend to Vercel (production)
+#   2. smoke-test the live API once Render is serving this exact commit
+#      (Render deploys it itself, after checks pass — render.yaml: checksPass)
+#   3. smoke-test the live website, including that it talks to the real API
+
+on:
+  workflow_run:
+    workflows: ["Atlas CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  API_URL: https://atlas-api-kpiq.onrender.com
+  WEB_URL: https://atlas-web-lake.vercel.app
+  SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  deploy-web:
+    name: Deploy frontend to Vercel
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://atlas-web-lake.vercel.app
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      # Identifiers, not secrets (the token is the secret).
+      VERCEL_ORG_ID: team_hwBCYgSP1YkMGmJLAcDodMZu
+      VERCEL_PROJECT_ID: prj_wAGfsG73LQFnGE3YTcbwEwGWIhwO
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Remote build on Vercel, so the production NEXT_PUBLIC_API_URL set in the
+      # Vercel project is the one baked in.
+      - name: Deploy (production)
+        run: npx --yes vercel@latest deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}"
+
+  smoke-api:
+    name: Smoke-test live API
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Wait until Render serves this commit
+        run: |
+          deployed=$(curl -s -m 60 "$API_URL/health" | jq -r '.commit // empty' || true)
+          # Render only redeploys when apps/api (or render.yaml) changed. If nothing
+          # backend-side changed since the commit already live, there is nothing to wait for.
+          if [ -n "$deployed" ] && git cat-file -e "${deployed}^{commit}" 2>/dev/null \
+             && git diff --quiet "$deployed" "$SHA" -- apps/api render.yaml; then
+            echo "API unchanged since live commit ${deployed:0:7} — no redeploy expected."
+            exit 0
+          fi
+          echo "Waiting for Render to serve ${SHA:0:7} (currently: ${deployed:-unknown})…"
+          for i in $(seq 1 75); do
+            live=$(curl -s -m 30 "$API_URL/health" | jq -r '.commit // empty' || true)
+            if [ "$live" = "$SHA" ]; then echo "Live on ${SHA:0:7} after ~$((i * 20))s."; exit 0; fi
+            sleep 20
+          done
+          echo "::error::Render did not serve ${SHA:0:7} within 25 minutes (live: ${live:-unknown})."
+          exit 1
+      - name: Readiness — LLM, database and web search configured
+        run: |
+          r=$(curl -s -m 60 "$API_URL/health/ready")
+          echo "$r" | jq .
+          echo "$r" | jq -e '.ready == true' >/dev/null || { echo "::error::API not ready"; exit 1; }
+          echo "$r" | jq -e '.checks.database.backend == "postgres"' >/dev/null \
+            || { echo "::error::API is not using Postgres (DATABASE_URL)"; exit 1; }
+          echo "$r" | jq -e '.checks.web_search.configured == true' >/dev/null \
+            || { echo "::error::TAVILY_API_KEY is not set"; exit 1; }
+      - name: Web search actually works (live Tavily probe)
+        run: |
+          w=$(curl -s -m 60 "$API_URL/health/web")
+          echo "$w" | jq .
+          echo "$w" | jq -e '.ok == true' >/dev/null \
+            || { echo "::error::Web search failing: $(echo "$w" | jq -r .detail)"; exit 1; }
+
+  smoke-web:
+    name: Smoke-test live website
+    needs: deploy-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pages load
+        run: |
+          for path in / /research; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 "$WEB_URL$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] || { echo "::error::$WEB_URL$path returned $code"; exit 1; }
+          done
+      - name: Frontend points at the production API (not localhost)
+        run: |
+          chunks=$(curl -s -m 60 "$WEB_URL/research" | grep -o '/_next/static/chunks/[^"]*\.js' | sort -u)
+          for c in $chunks; do
+            if curl -s -m 60 "$WEB_URL$c" | grep -q "$API_URL"; then echo "API URL found in $c"; exit 0; fi
+          done
+          echo "::error::No bundle references $API_URL — NEXT_PUBLIC_API_URL is wrong in Vercel"
+          exit 1
+      - name: Browser may call the API (CORS)
+        run: |
+          allowed=$(curl -s -m 60 -D - -o /dev/null -X OPTIONS "$API_URL/research/stream" \
+            -H "Origin: $WEB_URL" -H "Access-Control-Request-Method: GET" \
+            | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
+          echo "access-control-allow-origin: ${allowed:-<none>}"
+          [ "$allowed" = "$WEB_URL" ] || { echo "::error::CORS does not allow $WEB_URL"; exit 1; }

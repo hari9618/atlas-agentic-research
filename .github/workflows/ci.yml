@@ -1,41 +1,92 @@
 name: Atlas CI
 
+# Every push and pull request: backend lint + tests, the retrieval eval gate, and the
+# frontend lint + typecheck + production build. All offline — no API keys, no LLM
+# calls, no cost. On main, a green run is what lets Render deploy the API
+# (render.yaml: autoDeployTrigger: checksPass) and what triggers deploy.yml.
+
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
-    name: Backend — lint + tests (offline)
+    name: Backend — lint + tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/api
+    env:
+      ATLAS_OFFLINE_EMBED: "1"
+      ATLAS_OFFLINE_LLM: "1"
+      ATLAS_OFFLINE_WEB: "1"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-
-      - name: Install (editable + dev)
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install
         run: pip install -e ".[dev]"
-
       - name: Lint (ruff)
-        run: python -m ruff check atlas
+        run: python -m ruff check atlas tests
+      - name: Tests (offline)
+        run: python -m pytest -q -p no:warnings --cov=atlas --cov-report=term
 
-      - name: Tests (offline — no network, no API keys)
+  eval-gate:
+    name: Retrieval eval gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      ATLAS_OFFLINE_EMBED: "1"
+      ATLAS_OFFLINE_LLM: "1"
+      ATLAS_OFFLINE_WEB: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install
+        run: pip install -e ".[dev]"
+      # Golden-set hit rate, MRR and rank-aware context precision must stay above
+      # their floors (atlas/eval/retrieval_eval.py: GATE), or the build fails.
+      - name: Retrieval quality must not regress
+        run: python -m atlas.eval.retrieval_eval --gate
+
+  web:
+    name: Frontend — lint + typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
         env:
-          ATLAS_OFFLINE_EMBED: "1"
-          ATLAS_OFFLINE_LLM: "1"
-        run: python -m pytest -q --cov=atlas --cov-report=term-missing
-
-  # Web build is added in M5, once apps/web exists.
-  # web:
-  #   name: Frontend — lint + build
-  #   runs-on: ubuntu-latest
-  #   ...
+          NEXT_PUBLIC_API_URL: https://atlas-api-kpiq.onrender.com

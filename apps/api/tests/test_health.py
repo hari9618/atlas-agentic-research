@@ -17,7 +17,8 @@ client = TestClient(app)
 def test_health_liveness() -> None:
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "service": "atlas-api"}
+    body = resp.json()
+    assert body["status"] == "ok" and body["service"] == "atlas-api" and body["commit"]
 
 
 def test_health_readiness_reports_integrations() -> None:
@@ -67,3 +68,8 @@ def test_web_probe_names_the_failure_without_leaking_the_key(monkeypatch):
     assert out["ok"] is False and "invalid" in out["detail"] and "SECRET" not in str(out)
     # Cached: a second hit doesn't call Tavily again.
     assert client.get("/health/web").json()["cached"] is True
+
+
+def test_health_reports_the_running_commit(monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "3a45e5b0c0ffee")
+    assert client.get("/health").json()["commit"] == "3a45e5b0c0ffee"
