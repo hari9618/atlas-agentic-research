@@ -8,20 +8,33 @@ const btnBase =
   "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50";
 
 export const btn = {
-  primary: `${btnBase} bg-indigo-600 px-4 py-2.5 text-sm text-white shadow-[0_1px_0_rgb(255_255_255/0.2)_inset,0_6px_16px_-6px_rgb(79_70_229/0.6)] hover:bg-indigo-500`,
-  secondary: `${btnBase} border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-xs hover:border-slate-400 hover:bg-slate-50`,
+  /** The one filled accent: gold reads the same on every surface and in both themes. */
+  primary: `${btnBase} cursor-pointer bg-accent-400 px-4 py-2.5 text-sm text-ink-950 hover:bg-accent-300`,
+  secondary: `${btnBase} border border-slate-300 bg-surface px-4 py-2.5 text-sm text-slate-800 shadow-xs hover:border-slate-400 hover:bg-slate-50`,
   ghost: `${btnBase} px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900`,
-  small: `${btnBase} border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50`,
+  small: `${btnBase} border border-slate-300 bg-surface px-3 py-1.5 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50`,
   /** Bright pill for ink (dark) surfaces. */
-  light: `${btnBase} bg-white px-4 py-2.5 text-sm text-ink-950 shadow-[0_8px_30px_-8px_rgb(165_180_252/0.55)] hover:bg-indigo-50`,
+  light: `${btnBase} bg-white px-4 py-2.5 text-sm text-ink-950 shadow-[0_8px_30px_-8px_rgb(190_235_70/0.55)] hover:bg-accent-300`,
   /** Outline pill for ink (dark) surfaces. */
   ghostDark: `${btnBase} border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white backdrop-blur hover:border-white/30 hover:bg-white/10`,
   lg: "px-6 py-3 text-base",
 };
 
+/** 44 px minimum hit area on touch screens, without inflating dense desktop controls. */
+export const tap = "pointer-coarse:min-h-11";
+
+/** Lime status pills ("Released", "Approved", "Active"): filled, or outlined for quieter use. */
+export const limePill =
+  "inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent-400 px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-ink-950";
+export const limeOutline =
+  "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-indigo-700 ring-1 ring-accent-400/60 ring-inset";
+
+/** Toggle chip (section pickers, filters); pair with aria-pressed. */
+export const toggleChip = `inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${tap} border-slate-200 bg-surface text-slate-700 hover:border-slate-300 hover:bg-slate-50 aria-pressed:border-indigo-500 aria-pressed:bg-indigo-50 aria-pressed:text-indigo-800 aria-pressed:hover:bg-indigo-100`;
+
 /** Card shape only; pair with your own border + background colours. */
 export const cardBase = "rounded-2xl border";
-export const card = `${cardBase} border-slate-200/80 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04)]`;
+export const card = `${cardBase} border-slate-200/80 bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.04)]`;
 export const cardPad = "p-5 sm:p-6";
 
 export const eyebrow = "font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-indigo-600";
@@ -60,7 +73,7 @@ export const toneText: Record<ToneKey, string> = {
 
 /** Raised white surface used for workspace rail cards and the report document. */
 export const surface =
-  "rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04),0_12px_32px_-18px_rgb(15_23_42/0.14)]";
+  "rounded-2xl border border-slate-200/80 bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.04),0_12px_32px_-18px_rgb(15_23_42/0.14)]";
 
 /** Small mono uppercase label (KPI labels, column headers, meta rows). */
 export const monoLabel = "font-mono text-[10.5px] font-medium uppercase tracking-[0.16em]";

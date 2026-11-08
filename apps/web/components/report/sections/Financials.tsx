@@ -18,7 +18,7 @@ function MetricCard({ m, c }: { m: Metric; c: Ctx }) {
   const placeholder = isPlaceholder(m.value);
   const long = (m.value ?? "").length > 11;
   return (
-    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200/80 bg-linear-to-b from-slate-50/90 to-white p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
+    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200/80 bg-linear-to-b from-slate-50/90 to-surface p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
       <div className="flex items-start justify-between gap-2">
         <span className="min-w-0 text-xs leading-snug font-medium text-slate-500">{m.label}</span>
         <span className="-mt-0.5 shrink-0">

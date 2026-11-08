@@ -60,7 +60,7 @@ function Node({
         tone === "accent" && "border-indigo-400/30 bg-indigo-500/10",
         tone === "bull" && "border-emerald-400/25 bg-emerald-400/[0.07]",
         tone === "bear" && "border-rose-400/25 bg-rose-400/[0.07]",
-        tone === "you" && "border-white/30 bg-white text-ink-950",
+        tone === "you" && "border-white/30 bg-surface text-ink-950",
         className,
       )}
     >
@@ -127,7 +127,7 @@ export function Inside() {
       <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
       <div
         aria-hidden
-        className="absolute -top-40 right-0 -z-10 h-[34rem] w-[50rem] bg-[radial-gradient(closest-side,rgb(79_70_229/0.25),transparent)]"
+        className="absolute -top-40 right-0 -z-10 h-[34rem] w-[50rem] bg-[radial-gradient(closest-side,rgb(190_235_70/0.25),transparent)]"
       />
       <Container>
         <div className="reveal">

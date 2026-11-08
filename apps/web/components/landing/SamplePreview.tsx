@@ -31,9 +31,9 @@ export function SamplePreview() {
         <div className="relative mx-auto mt-12 max-w-5xl">
           <div
             aria-hidden
-            className="absolute -inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(60%_50%_at_50%_0%,rgb(99_102_241/0.18),transparent_70%)] blur-xl"
+            className="absolute -inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(60%_50%_at_50%_0%,rgb(190_235_70/0.18),transparent_70%)] blur-xl"
           />
-          <div className="rounded-[1.75rem] border border-slate-200/80 bg-white/70 p-2 shadow-[0_40px_100px_-40px_rgb(15_23_42/0.35)] backdrop-blur sm:p-3">
+          <div className="rounded-[1.75rem] border border-slate-200/80 bg-surface/70 p-2 shadow-[0_40px_100px_-40px_rgb(15_23_42/0.35)] backdrop-blur sm:p-3">
             <div className="flex items-center gap-1.5 px-3 pt-1 pb-3" aria-hidden>
               <span className="h-2.5 w-2.5 rounded-full bg-slate-200" />
               <span className="h-2.5 w-2.5 rounded-full bg-slate-200" />

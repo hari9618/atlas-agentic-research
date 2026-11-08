@@ -52,7 +52,7 @@ export function HowItWorks() {
           {STEPS.map((s, i) => (
             <li
               key={s.title}
-              className="reveal relative flex flex-col rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] backdrop-blur"
+              className="reveal spotlight relative flex flex-col rounded-2xl border border-slate-200/80 bg-surface/90 p-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] backdrop-blur"
             >
               <div className="flex items-center justify-between">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100">
@@ -65,7 +65,7 @@ export function HowItWorks() {
               {i < STEPS.length - 1 && (
                 <span
                   aria-hidden
-                  className="absolute top-1/2 -right-3 z-10 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 md:flex"
+                  className="absolute top-1/2 -right-3 z-10 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-surface text-slate-400 md:flex"
                 >
                   <Icon name="arrowRight" className="h-3 w-3" />
                 </span>

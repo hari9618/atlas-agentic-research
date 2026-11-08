@@ -46,7 +46,7 @@ export function Faq() {
             <Icon name="arrowRight" />
           </Link>
         </div>
-        <div className="reveal divide-y divide-slate-200 rounded-3xl border border-slate-200/80 bg-white px-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] sm:px-7">
+        <div className="reveal divide-y divide-slate-200 rounded-3xl border border-slate-200/80 bg-surface px-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] sm:px-7">
           {FAQS.map((f, i) => (
             <Disclosure
               key={f.q}

@@ -60,7 +60,7 @@ const FEATURES: { icon: IconName; title: string; body: string; visual: React.Rea
 
 export function Features() {
   return (
-    <section id="features" aria-labelledby="features-title" className="scroll-mt-24 bg-white py-24 sm:py-28">
+    <section id="features" aria-labelledby="features-title" className="scroll-mt-24 bg-surface py-24 sm:py-28">
       <Container>
         <div className="reveal">
           <SectionHeading
@@ -76,13 +76,13 @@ export function Features() {
             <article
               key={f.title}
               className={cx(
-                "reveal group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-linear-to-b from-slate-50 to-white p-6 transition-shadow hover:shadow-[0_30px_60px_-30px_rgb(15_23_42/0.25)] sm:p-7",
+                "reveal spotlight group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-linear-to-b from-slate-50 to-surface p-6 transition-shadow hover:shadow-[0_30px_60px_-30px_rgb(15_23_42/0.25)] sm:p-7",
                 f.span,
                 f.wide && "sm:col-span-2 lg:grid lg:grid-cols-[1fr_1.1fr] lg:items-center lg:gap-10",
               )}
             >
               <div>
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface text-indigo-700 shadow-xs ring-1 ring-slate-200">
                   <Icon name={f.icon} className="h-4.5 w-4.5" />
                 </span>
                 <h3 className="mt-5 text-xl font-semibold tracking-tight text-slate-950">{f.title}</h3>

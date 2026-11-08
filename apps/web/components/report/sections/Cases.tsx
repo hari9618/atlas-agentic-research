@@ -66,7 +66,7 @@ export function BullBear({ s, c, n }: P) {
         </div>
         <span
           aria-hidden
-          className="absolute top-[0.6rem] left-1/2 hidden -translate-x-1/2 rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-slate-500 uppercase shadow-xs ring-1 ring-slate-200 @2xl:block"
+          className="absolute top-[0.6rem] left-1/2 hidden -translate-x-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-slate-500 uppercase shadow-xs ring-1 ring-slate-200 @2xl:block"
         >
           vs
         </span>
@@ -92,7 +92,7 @@ export function Outlook({ s, c, n }: P) {
             {items.map((w, i) => (
               <li
                 key={i}
-                className="flex gap-3 rounded-xl border border-slate-200/80 bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-[0_1px_2px_rgb(15_23_42/0.04)]"
+                className="flex gap-3 rounded-xl border border-slate-200/80 bg-surface p-4 text-sm leading-relaxed text-slate-700 shadow-[0_1px_2px_rgb(15_23_42/0.04)]"
               >
                 <span
                   aria-hidden

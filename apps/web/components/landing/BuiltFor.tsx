@@ -32,7 +32,7 @@ const AUDIENCES: { icon: IconName; title: string; body: string; ask: string }[] 
 
 export function BuiltFor() {
   return (
-    <section id="built-for" aria-labelledby="built-for-title" className="relative scroll-mt-24 bg-white py-24 sm:py-28">
+    <section id="built-for" aria-labelledby="built-for-title" className="relative scroll-mt-24 bg-surface py-24 sm:py-28">
       <Container>
         <div className="reveal">
           <SectionHeading
@@ -47,7 +47,7 @@ export function BuiltFor() {
           {AUDIENCES.map((a) => (
             <li
               key={a.title}
-              className="reveal group relative flex min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-linear-to-b from-white to-slate-50/80 p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_20px_50px_-24px_rgb(79_70_229/0.35)]"
+              className="reveal spotlight group relative flex min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-linear-to-b from-surface to-slate-50/80 p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_20px_50px_-24px_rgb(190_235_70/0.35)]"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ink-950 text-indigo-200 shadow-[inset_0_1px_0_rgb(255_255_255/0.15)]">
                 <Icon name={a.icon} className="h-5 w-5" />
@@ -56,7 +56,7 @@ export function BuiltFor() {
               <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{a.body}</p>
               <Link
                 href={`/research?q=${encodeURIComponent(a.ask)}`}
-                className="mt-5 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition-colors group-hover:border-indigo-200 hover:text-indigo-700"
+                className="mt-5 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-surface px-3 py-2 text-xs text-slate-600 transition-colors group-hover:border-indigo-200 hover:text-indigo-700"
               >
                 <span className="min-w-0 font-mono leading-snug">&ldquo;{a.ask}&rdquo;</span>
                 <Icon name="arrowRight" className="h-3.5 w-3.5 shrink-0" />

@@ -1,40 +1,63 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  type ApiFailure,
   type DebateTurn,
+  ensureAwake,
   type Finding,
+  isWarm,
   type NodeName,
-  type ResearchPayload,
-  type ReportSections,
-  SPECIALISTS,
   newThreadId,
+  type ReportSections,
+  type ResearchPayload,
   resumeResearch,
+  type ReviewDecision,
+  type ReviewHistoryItem,
+  type ReviewSectionKey,
+  SPECIALISTS,
   startResearch,
   type StreamHandlers,
 } from "@/lib/api";
+import { reviewableSections, sectionDef } from "@/lib/review";
 import { SAMPLE_PAYLOAD, SAMPLE_QUERY } from "@/lib/sample-report";
 import { ExportButton } from "@/components/report/ExportButton";
 import { PrintableReport } from "@/components/report/PrintableReport";
 import { StructuredReport } from "@/components/report/StructuredReport";
 import { Badge } from "@/components/ui/Badge";
 import { Icon, type IconName } from "@/components/ui/Icon";
-import { btn, cardBase, cx, eyebrow, monoLabel, surface } from "@/components/ui/styles";
+import { Spinner } from "@/components/ui/Spinner";
+import { btn, cardBase, cx, eyebrow, limePill, monoLabel, surface, tap } from "@/components/ui/styles";
 import { CorpusPanel } from "./CorpusPanel";
+import { describeFailure, type Recovery, type RunError } from "./failure";
 import {
   type ActivityEntry,
   clock,
   IDLE_STEPS,
   ProgressStepper,
   RunCard,
+  type RunMode,
   type StepId,
   type Steps,
 } from "./ProgressStepper";
-import { QueryBox } from "./QueryBox";
+import { type EngineState, QueryBox } from "./QueryBox";
 import { MAX_REVISIONS, ReviewPanel, type ReviewEntry } from "./ReviewPanel";
 
-type Phase = "idle" | "running" | "review" | "revising" | "approving" | "final" | "error";
-type LastOp = { kind: "start" } | { kind: "resume"; action: "approve" | "revise"; feedback: string };
+type Phase =
+  | "idle"
+  | "waking"
+  | "running"
+  | "review"
+  | "revising"
+  | "approving"
+  | "rejecting"
+  | "final"
+  | "rejected"
+  | "error";
+
+type LastOp =
+  | { kind: "start"; query: string }
+  | { kind: "resume"; action: ReviewDecision; feedback: string; section: ReviewSectionKey | null };
 
 const SPECIALIST_LABEL: Record<string, string> = {
   fundamentals: "Fundamentals analyst",
@@ -45,17 +68,63 @@ const SPECIALIST_LABEL: Record<string, string> = {
 
 const HEADLINE: Record<Phase, string> = {
   idle: "",
+  waking: "Waking up the research engine…",
   running: "Researching…",
   review: "Draft ready for your review",
-  revising: "Revising the report with your feedback…",
-  approving: "Finalizing the report…",
+  revising: "Revising with your feedback…",
+  approving: "Finalizing the brief…",
+  rejecting: "Recording your decision…",
   final: "Research complete",
+  rejected: "Brief rejected",
   error: "The run stopped",
 };
 
+const LIVE: Phase[] = ["waking", "running", "revising", "approving", "rejecting"];
+const BUSY_ACTION: Partial<Record<Phase, ReviewDecision>> = {
+  revising: "revise",
+  approving: "approve",
+  rejecting: "reject",
+};
+
 const REVIEW_PANEL_ID = "review-panel";
+const QUERY_INPUT_ID = "research-query";
 
 const isSpecialist = (n: string) => (SPECIALISTS as readonly string[]).includes(n);
+
+function subscribeOnline(cb: () => void) {
+  window.addEventListener("online", cb);
+  window.addEventListener("offline", cb);
+  return () => {
+    window.removeEventListener("online", cb);
+    window.removeEventListener("offline", cb);
+  };
+}
+const useOnline = () =>
+  useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+
+const ACTIONS = new Set(["approve", "revise", "reject", "auto_approve"]);
+
+/** The server's review history is authoritative; local entries only fill in the
+ *  `section` an older backend may not echo back. */
+function mergeHistory(server: unknown, local: ReviewEntry[]): ReviewEntry[] | null {
+  if (!Array.isArray(server) || !server.length) return null;
+  const valid = server.filter(
+    (h): h is ReviewHistoryItem => !!h && typeof h === "object" && ACTIONS.has((h as ReviewHistoryItem).action),
+  );
+  if (!valid.length) return null;
+  return valid.map((h) => {
+    const twin = local.find((l) => l.revision === h.revision && l.action === h.action);
+    return { ...h, feedback: h.feedback ?? "", section: h.section ?? twin?.section ?? null };
+  });
+}
+
+function doneSpecialists(): Partial<Steps> {
+  return Object.fromEntries(SPECIALISTS.map((s) => [s, "done"])) as Partial<Steps>;
+}
 
 export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery);
@@ -68,20 +137,39 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   const [revision, setRevision] = useState(0);
   const [reviewStatus, setReviewStatus] = useState<string>("");
   const [history, setHistory] = useState<ReviewEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<RunError | null>(null);
+  const [errorDuring, setErrorDuring] = useState<"start" | "resume">("start");
   const [elapsed, setElapsed] = useState(0);
   const [showSample, setShowSample] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [engine, setEngine] = useState<EngineState>("checking");
+  const online = useOnline();
 
   const cancelRef = useRef<(() => void) | null>(null);
+  const wakeAbortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<string>("");
-  const lastOpRef = useRef<LastOp>({ kind: "start" });
+  const lastOpRef = useRef<LastOp>({ kind: "start", query: "" });
   const startedRef = useRef(0);
   const revisionRef = useRef(0);
+  const stepsBeforeRef = useRef<Steps>(IDLE_STEPS);
+  // Every run / resume / reset takes a new token; callbacks from an older stream or
+  // wake-up check compare tokens and quietly drop themselves.
+  const tokenRef = useRef(0);
 
-  const live = phase === "running" || phase === "revising" || phase === "approving";
+  const live = LIVE.includes(phase);
 
-  // Tick the elapsed timer while a stream is open so the UI never looks frozen.
+  // Warm the API in the background as soon as the page opens, so that by the time the
+  // question is typed a sleeping free-tier server is already booting.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    ensureAwake({ signal: ctrl.signal, onSlow: () => setEngine("waking") }).then((r) => {
+      if (r.ok) setEngine("ready");
+      else if (r.failure.kind !== "aborted") setEngine(r.failure.kind === "offline" ? "offline" : "unreachable");
+    });
+    return () => ctrl.abort();
+  }, []);
+
+  // Tick the elapsed timer while anything is in flight so the UI never looks frozen.
   useEffect(() => {
     if (!live) return;
     const t = setInterval(() => setElapsed(Math.floor((Date.now() - startedRef.current) / 1000)), 1000);
@@ -89,11 +177,29 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   }, [live]);
 
   // Close any open stream when leaving the page.
-  useEffect(() => () => cancelRef.current?.(), []);
+  useEffect(
+    () => () => {
+      cancelRef.current?.();
+      wakeAbortRef.current?.abort();
+    },
+    [],
+  );
 
   const since = () => Math.max(0, Math.floor((Date.now() - startedRef.current) / 1000));
   const log = (text: string) => setActivity((a) => [{ text, at: since() }, ...a].slice(0, 7));
   const setStep = (patch: Partial<Steps>) => setSteps((s) => ({ ...s, ...patch }));
+
+  function stopAll() {
+    cancelRef.current?.();
+    cancelRef.current = null;
+    wakeAbortRef.current?.abort();
+    wakeAbortRef.current = null;
+  }
+
+  function beginClock() {
+    startedRef.current = Date.now();
+    setElapsed(0);
+  }
 
   const mergePayload = (data: Record<string, unknown>) =>
     setPayload((p) => {
@@ -108,84 +214,151 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
       return next;
     });
 
-  const handlers = (): StreamHandlers => ({
-    onStart: (d) => {
-      if (d.thread_id) threadRef.current = d.thread_id;
-    },
-    onNode: (node: NodeName, data) => {
-      if (node === "recall") {
-        log("Checked memory for related past research");
-      } else if (node === "supervisor") {
-        const target = typeof data.target === "string" ? data.target : "";
-        setStep({ plan: "done", fundamentals: "active", news_sentiment: "active", market: "active", risk: "active" });
-        if (target) setPayload((p) => ({ ...(p ?? {}), target }));
-        log(target ? `Planned the research on ${target}` : "Planned the research");
-      } else if (isSpecialist(node)) {
-        const found = Array.isArray(data.findings) ? (data.findings as Finding[]) : [];
-        setPayload((p) => ({ ...(p ?? {}), findings: [...(p?.findings ?? []), ...found] }));
-        setCounts((c) => ({ ...c, [node]: (c[node as StepId] ?? 0) + found.length }));
-        setSteps((s) => {
-          const next: Steps = { ...s, [node]: "done" };
-          if (SPECIALISTS.every((sp) => next[sp] === "done") && next.debate === "idle") next.debate = "active";
-          return next;
-        });
-        log(`${SPECIALIST_LABEL[node]} finished with ${found.length} finding${found.length === 1 ? "" : "s"}`);
-      } else if (node === "debate_round") {
-        if (Array.isArray(data.debate)) setPayload((p) => ({ ...(p ?? {}), debate: data.debate as DebateTurn[] }));
-        setStep({ debate: "done", writing: "active" });
-        log("The bull and the bear made their cases");
-      } else if (node === "revise_research") {
-        const found = Array.isArray(data.findings) ? (data.findings as Finding[]) : [];
-        if (found.length) setPayload((p) => ({ ...(p ?? {}), findings: [...(p?.findings ?? []), ...found] }));
-        setStep({ followup: "done", writing: "active" });
-        log(`Gathered ${found.length || "extra"} new finding${found.length === 1 ? "" : "s"} for your feedback`);
-      } else if (node === "synthesize") {
-        mergePayload(data);
-        setStep({ writing: "done", review: "active" });
-        log("Drafted the report");
-      } else if (node === "remember") {
-        log("Saved this research to memory");
-      }
-    },
-    onReviewRequired: (d) => {
-      if (d.thread_id) threadRef.current = d.thread_id;
-      revisionRef.current = d.revision ?? revisionRef.current;
-      setRevision(revisionRef.current);
-      setPayload((p) => ({ ...(p ?? {}), ...d }));
-      setSteps((s) => ({ ...s, plan: "done", ...doneSpecialists(), debate: "done", writing: "done", review: "active", followup: s.followup === "idle" ? "idle" : "done" }));
+  function fail(f: ApiFailure, token: number) {
+    if (token !== tokenRef.current || f.kind === "aborted") return;
+    const op = lastOpRef.current;
+    const during = op.kind === "start" ? "start" : "resume";
+    const e = describeFailure(f, during);
+    cancelRef.current = null;
+    setError(e);
+    setErrorDuring(during);
+    setHistory((h) => h.filter((x) => !x.pending));
+    if (f.kind === "unreachable") setEngine("unreachable");
+    if (during === "resume" && e.threadAlive) {
+      // The draft is still waiting for a decision: put the review back as it was.
+      setSteps(stepsBeforeRef.current);
       setPhase("review");
-      log(revisionRef.current > 0 ? `Revision ${revisionRef.current} is ready` : "First draft is ready");
-    },
-    onFinal: (d) => {
-      if (d.thread_id) threadRef.current = d.thread_id;
-      if (typeof d.revision === "number") {
-        revisionRef.current = d.revision;
-        setRevision(d.revision);
-      }
-      setPayload((p) => ({ ...(p ?? {}), ...d }));
-      setReviewStatus(d.review_status || "auto_approved");
-      setSteps((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, k === "followup" && v === "idle" ? "idle" : "done"])) as Steps);
-      setPhase("final");
-      log("Report approved and finalized");
-    },
-    onError: (msg) => {
-      setError(msg);
+      log("Your decision didn't go through");
+    } else {
       setSteps((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v === "active" ? "error" : v])) as Steps);
       setPhase("error");
-    },
-  });
-
-  function beginClock() {
-    startedRef.current = Date.now();
-    setElapsed(0);
+    }
   }
 
-  function run(q: string) {
+  const handlers = (token: number): StreamHandlers => {
+    const current = () => token === tokenRef.current;
+    return {
+      onStart: (d) => {
+        if (current() && d.thread_id) threadRef.current = d.thread_id;
+      },
+      onNode: (node: NodeName, data) => {
+        if (!current()) return;
+        if (node === "recall") {
+          log("Checked memory for related past research");
+        } else if (node === "supervisor") {
+          const target = typeof data.target === "string" ? data.target : "";
+          setStep({ plan: "done", fundamentals: "active", news_sentiment: "active", market: "active", risk: "active" });
+          if (target) setPayload((p) => ({ ...(p ?? {}), target }));
+          log(target ? `Planned the research on ${target}` : "Planned the research");
+        } else if (isSpecialist(node)) {
+          const found = Array.isArray(data.findings) ? (data.findings as Finding[]) : [];
+          setPayload((p) => ({ ...(p ?? {}), findings: [...(p?.findings ?? []), ...found] }));
+          setCounts((c) => ({ ...c, [node]: (c[node as StepId] ?? 0) + found.length }));
+          setSteps((s) => {
+            const next: Steps = { ...s, [node]: "done" };
+            if (SPECIALISTS.every((sp) => next[sp] === "done") && next.debate === "idle") next.debate = "active";
+            return next;
+          });
+          log(`${SPECIALIST_LABEL[node]} finished with ${found.length} finding${found.length === 1 ? "" : "s"}`);
+        } else if (node === "debate_round") {
+          if (Array.isArray(data.debate)) setPayload((p) => ({ ...(p ?? {}), debate: data.debate as DebateTurn[] }));
+          setStep({ debate: "done", writing: "active" });
+          log("The bull and the bear made their cases");
+        } else if (node === "revise_research") {
+          const found = Array.isArray(data.findings) ? (data.findings as Finding[]) : [];
+          if (found.length) setPayload((p) => ({ ...(p ?? {}), findings: [...(p?.findings ?? []), ...found] }));
+          setStep({ followup: "done", writing: "active" });
+          log(`Gathered ${found.length || "extra"} new finding${found.length === 1 ? "" : "s"} for your feedback`);
+        } else if (node === "synthesize") {
+          mergePayload(data);
+          setStep({ writing: "done", review: "active" });
+          log("Drafted the report");
+        } else if (node === "remember") {
+          log("Saved this research to memory");
+        }
+      },
+      onReviewRequired: (d) => {
+        if (!current()) return;
+        cancelRef.current = null;
+        if (d.thread_id) threadRef.current = d.thread_id;
+        revisionRef.current = d.revision ?? revisionRef.current;
+        setRevision(revisionRef.current);
+        setPayload((p) => ({ ...(p ?? {}), ...d }));
+        setHistory((h) => mergeHistory(d.review_history, h) ?? h.map((x) => ({ ...x, pending: false })));
+        setSteps((s) => ({
+          ...s,
+          plan: "done",
+          ...doneSpecialists(),
+          debate: "done",
+          writing: "done",
+          review: "active",
+          followup: s.followup === "idle" ? "idle" : "done",
+        }));
+        setPhase("review");
+        log(revisionRef.current > 0 ? `Revision ${revisionRef.current} is ready for review` : "First draft is ready for review");
+      },
+      onFinal: (d) => {
+        if (!current()) return;
+        cancelRef.current = null;
+        if (d.thread_id) threadRef.current = d.thread_id;
+        if (typeof d.revision === "number") {
+          revisionRef.current = d.revision;
+          setRevision(d.revision);
+        }
+        const status = d.review_status || "auto_approved";
+        setPayload((p) => ({ ...(p ?? {}), ...d }));
+        setReviewStatus(status);
+        setHistory((h) => mergeHistory(d.review_history, h) ?? h.map((x) => ({ ...x, pending: false })));
+        setSteps(
+          (s) =>
+            Object.fromEntries(
+              Object.entries(s).map(([k, v]) => [
+                k,
+                k === "followup" && v === "idle"
+                  ? "idle"
+                  : k === "review" && status === "rejected"
+                    ? "error" // a rejected brief ends in red, not a success tick
+                    : "done",
+              ]),
+            ) as Steps,
+        );
+        if (status === "rejected") {
+          setPhase("rejected");
+          log("Brief rejected; the run is closed");
+        } else {
+          setPhase("final");
+          log(status === "auto_approved" ? "Brief finalized" : "Brief approved and finalized");
+        }
+      },
+      onError: (f) => fail(f, token),
+    };
+  };
+
+  /** Wait for the API to be awake; explains a cold start via `onSlow`. */
+  async function wake(token: number, onSlow: () => void): Promise<boolean> {
+    if (isWarm()) return true;
+    const ctrl = new AbortController();
+    wakeAbortRef.current = ctrl;
+    const r = await ensureAwake({
+      signal: ctrl.signal,
+      onSlow: () => token === tokenRef.current && onSlow(),
+    });
+    if (token !== tokenRef.current) return false;
+    wakeAbortRef.current = null;
+    if (!r.ok) {
+      fail(r.failure, token);
+      return false;
+    }
+    setEngine("ready");
+    return true;
+  }
+
+  async function run(q: string) {
     const text = q.trim();
     if (text.length < 3 || live) return;
-    cancelRef.current?.();
-    lastOpRef.current = { kind: "start" };
-    threadRef.current = newThreadId();
+    stopAll();
+    const token = ++tokenRef.current;
+    lastOpRef.current = { kind: "start", query: text };
     revisionRef.current = 0;
     beginClock();
     setAsked(text);
@@ -197,53 +370,101 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     setHistory([]);
     setReviewOpen(false);
     setCounts({});
-    setActivity([{ text: "Starting the research team…", at: 0 }]);
+    setSteps(IDLE_STEPS);
+    setActivity([{ text: "Connecting to the research engine…", at: 0 }]);
+    setPhase("running");
+
+    let woke = false;
+    const ok = await wake(token, () => {
+      woke = true;
+      setEngine("waking");
+      setPhase("waking");
+    });
+    if (!ok) return;
+
+    if (woke) log("The research engine is awake");
     setSteps({ ...IDLE_STEPS, plan: "active" });
     setPhase("running");
-    cancelRef.current = startResearch(text, { review: true, threadId: threadRef.current }, handlers());
+    log("Starting the research team…");
+    threadRef.current = newThreadId();
+    cancelRef.current = startResearch(text, { review: true, threadId: threadRef.current }, handlers(token));
   }
 
-  function resume(action: "approve" | "revise", feedback = "") {
-    if (!threadRef.current || live) return;
-    cancelRef.current?.();
-    lastOpRef.current = { kind: "resume", action, feedback };
+  async function resume(action: ReviewDecision, feedback = "", section: ReviewSectionKey | null = null) {
+    if (!threadRef.current || phase !== "review") return;
+    stopAll();
+    const token = ++tokenRef.current;
+    lastOpRef.current = { kind: "resume", action, feedback, section };
+    stepsBeforeRef.current = steps;
     setError(null);
     setReviewOpen(false);
     beginClock();
+    setHistory((h) => [
+      ...h.filter((x) => !x.pending),
+      {
+        revision: revisionRef.current,
+        action,
+        feedback: action === "approve" ? "" : feedback,
+        section: action === "approve" ? null : section,
+        pending: true,
+      },
+    ]);
     if (action === "approve") {
-      setHistory((h) => [...h, { revision: revisionRef.current, action, feedback: "" }]);
       setStep({ review: "active" });
-      setActivity([{ text: "Finalizing your approved report…", at: 0 }]);
+      setActivity([{ text: "Approval sent. Finalizing the brief…", at: 0 }]);
       setPhase("approving");
+    } else if (action === "reject") {
+      setStep({ review: "active" });
+      setActivity([{ text: "Rejection sent. Closing the run…", at: 0 }]);
+      setPhase("rejecting");
     } else {
-      setHistory((h) => [...h, { revision: revisionRef.current + 1, action, feedback }]);
       setStep({ followup: "active", writing: "idle", review: "idle" });
-      setActivity([{ text: "Researching your feedback…", at: 0 }]);
+      setActivity([{ text: "Feedback sent. Researching it…", at: 0 }]);
       setPhase("revising");
     }
-    cancelRef.current = resumeResearch(threadRef.current, action, feedback, handlers());
+
+    const ok = await wake(token, () => log("Waking up the research engine (it naps when idle)…"));
+    if (!ok) return;
+    cancelRef.current = resumeResearch(threadRef.current, action, { feedback, section }, handlers(token));
   }
 
-  function retry() {
-    const op = lastOpRef.current;
-    if (op.kind === "start") run(asked || query);
-    else {
-      // Roll back the history entry the failed attempt added, then try again.
-      setHistory((h) => h.slice(0, -1));
-      resume(op.action, op.feedback);
-    }
-  }
-
-  function reset() {
-    cancelRef.current?.();
+  function backToIdle() {
+    stopAll();
+    tokenRef.current++;
     setPhase("idle");
     setPayload(null);
     setError(null);
     setSteps(IDLE_STEPS);
     setActivity([]);
     setHistory([]);
+    setCounts({});
     setReviewOpen(false);
     setAsked("");
+  }
+
+  function focusQuery() {
+    requestAnimationFrame(() => {
+      const el = document.getElementById(QUERY_INPUT_ID) as HTMLInputElement | null;
+      el?.focus();
+      el?.select();
+    });
+  }
+
+  function recover(r: Recovery) {
+    const op = lastOpRef.current;
+    if (r === "retry") {
+      if (op.kind === "start") run(op.query || asked || query);
+      else resume(op.action, op.feedback, op.section);
+    } else if (r === "back") {
+      setError(null);
+    } else if (r === "edit") {
+      if (op.kind === "start" && op.query) setQuery(op.query);
+      backToIdle();
+      focusQuery();
+    } else {
+      backToIdle();
+      focusQuery();
+    }
   }
 
   function openReview() {
@@ -252,15 +473,41 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     document.getElementById(REVIEW_PANEL_ID)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }
 
+  // ---- Derived view state -------------------------------------------------------
   const hasReport = !!payload && (!!payload.report_sections || !!payload.report);
   const compact = phase !== "idle";
-  const draftStale = phase === "revising" || phase === "approving";
+  const busyAction = BUSY_ACTION[phase];
+  const draftStale = !!busyAction;
   const approved = phase === "final";
+  const rejected = phase === "rejected";
+  const reviewClosed = phase === "error" && errorDuring === "resume";
   const sampleOn = showSample && !compact;
+  const reviewError = phase === "review" && error ? error : null;
   const showMobileBar = hasReport && (phase === "review" || live);
+  const sections = reviewableSections(payload?.report_sections).map((d) => ({ key: d.key, label: d.label }));
+  const runMode: RunMode = phase === "waking" ? "waking" : phase === "error" ? "stopped" : live ? "live" : "settled";
+
+  // Mark the section the latest feedback was about, while it is revised and once the
+  // new draft is back.
+  const lastRevise = [...history].reverse().find((h) => h.action === "revise");
+  const flagDef = lastRevise ? sectionDef(lastRevise.section) : undefined;
+  const flag =
+    flagDef && (phase === "revising" || (phase === "review" && revision === lastRevise!.revision + 1))
+      ? { block: flagDef.block, label: phase === "revising" ? "Revising per your feedback" : "Updated per your feedback" }
+      : undefined;
+
   const statusBadge = approved ? (
-    <Badge tone="good" dot surface="dark">
+    <span className={limePill}>
+      <Icon name="check" className="h-3 w-3" strokeWidth={3} />
       {reviewStatus === "auto_approved" ? "Final" : "Approved"}
+    </span>
+  ) : rejected ? (
+    <Badge tone="bad" dot surface="dark">
+      Rejected
+    </Badge>
+  ) : reviewClosed ? (
+    <Badge tone="muted" surface="dark">
+      Draft · review closed
     </Badge>
   ) : hasReport && phase !== "running" ? (
     <Badge tone="mid" surface="dark">
@@ -275,42 +522,56 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     elapsed: live ? elapsed : undefined,
     activity,
     showFollowup: history.some((h) => h.action === "revise"),
-    reviewLabel: phase === "approving" || approved ? "Approval" : "Your review",
+    reviewLabel: approved || phase === "approving" ? "Approval" : rejected ? "Rejected" : "Your review",
   };
+
+  const reviewMode = approved
+    ? "approved"
+    : rejected
+      ? "rejected"
+      : reviewClosed
+        ? "ended"
+        : draftStale
+          ? "busy"
+          : "review";
+  const showReviewPanel = phase === "review" || draftStale || approved || rejected || reviewClosed;
 
   return (
     <>
-      <div className={cx("screen-only space-y-6", showMobileBar && "pb-24 lg:pb-0")}>
-        <QueryBox query={query} setQuery={setQuery} onSubmit={() => run(query)} busy={live} compact={compact} />
+      <div className={cx("screen-only space-y-6", showMobileBar && "pb-28 lg:pb-0")}>
+        <QueryBox
+          query={query}
+          setQuery={setQuery}
+          onSubmit={() => run(query)}
+          busy={live}
+          busyLabel={phase === "waking" ? "Starting…" : "Working…"}
+          compact={compact}
+          engine={engine}
+          offline={!online}
+        />
+
+        {!online && compact && (
+          <p
+            role="status"
+            className="flex animate-enter items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800"
+          >
+            <Icon name="alert" className="h-4 w-4 shrink-0 text-amber-600" />
+            You&apos;re offline. Your work is safe here; reconnect to continue.
+          </p>
+        )}
+
         {!compact && <CorpusPanel />}
 
-        {phase === "error" && error && (
-          <div
-            role="alert"
-            className={cx(cardBase, "flex flex-col gap-3 border-rose-200 bg-rose-50/70 p-4 sm:flex-row sm:items-center")}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
-              <Icon name="alert" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-rose-900">Something went wrong</p>
-              <p className="text-sm text-rose-800">{error}</p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={retry} className={btn.primary}>
-                <Icon name="refresh" />
-                Try again
-              </button>
-              <button type="button" onClick={reset} className={btn.secondary}>
-                Start over
-              </button>
-            </div>
-          </div>
-        )}
+        {phase === "error" && error && <ErrorCard error={error} onAction={recover} />}
 
         {compact && !hasReport && (
           <>
-            <ProgressStepper {...progressProps} question={asked} />
+            <ProgressStepper
+              {...progressProps}
+              question={asked}
+              mode={runMode}
+              onCancel={phase === "waking" || phase === "running" ? backToIdle : undefined}
+            />
             {live && <ReportSkeleton />}
           </>
         )}
@@ -330,8 +591,8 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
                   cited to the demo corpus.
                 </p>
                 <div className="mt-4 space-y-2">
-                  <ExportButton ready className={cx(btn.secondary, "w-full")} />
-                  <button type="button" onClick={() => setShowSample(false)} className={cx(btn.ghost, "w-full")}>
+                  <ExportButton ready className={cx(btn.secondary, "w-full", tap)} />
+                  <button type="button" onClick={() => setShowSample(false)} className={cx(btn.ghost, "w-full", tap)}>
                     Hide sample
                   </button>
                 </div>
@@ -346,24 +607,40 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
           <ReportLayout
             aside={
               <>
-                <RunCard {...progressProps} live={live} />
-                {(phase === "review" || draftStale || approved) && (
+                <RunCard
+                  {...progressProps}
+                  live={live}
+                  outcome={approved ? "approved" : rejected ? "rejected" : phase === "error" ? "stopped" : undefined}
+                />
+                {reviewError && <ErrorCard error={reviewError} onAction={recover} compact />}
+                {showReviewPanel && (
                   <ReviewPanel
                     id={REVIEW_PANEL_ID}
-                    mode={approved ? "approved" : draftStale ? "busy" : "review"}
+                    mode={reviewMode}
+                    busyAction={busyAction}
                     revision={revision}
                     autoApproved={reviewStatus === "auto_approved"}
                     history={history}
+                    sections={sections}
+                    ns="run"
                     open={reviewOpen}
                     onOpenChange={setReviewOpen}
                     onApprove={() => resume("approve")}
-                    onRevise={(f) => resume("revise", f)}
+                    onRevise={(f, s) => resume("revise", f, s)}
+                    onReject={(reason) => resume("reject", reason)}
                   />
                 )}
                 <div className={cx(surface, "space-y-2 p-3")}>
-                  <ExportButton ready={hasReport} className={cx(btn.secondary, "w-full")} />
-                  {(approved || phase === "error") && (
-                    <button type="button" onClick={reset} className={cx(btn.ghost, "w-full")}>
+                  <ExportButton ready={hasReport} className={cx(btn.secondary, "w-full", tap)} />
+                  {(approved || rejected || phase === "error") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        backToIdle();
+                        focusQuery();
+                      }}
+                      className={cx(btn.ghost, "w-full", tap)}
+                    >
                       <Icon name="refresh" />
                       Start new research
                     </button>
@@ -376,20 +653,28 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
             {draftStale && (
               <div
                 role="status"
-                className="mb-4 flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm text-indigo-900"
+                className="mb-4 flex animate-enter items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm text-indigo-900"
               >
-                <span aria-hidden className="h-2 w-2 shrink-0 animate-blink rounded-full bg-indigo-500" />
-                {phase === "revising"
-                  ? "Revising this draft with your feedback. The new revision replaces it when ready."
-                  : "Finalizing the approved brief…"}
+                <Spinner className="h-4 w-4 text-indigo-600" />
+                <span className="min-w-0">
+                  {phase === "revising"
+                    ? "Revising this draft with your feedback. The new revision replaces it when ready."
+                    : phase === "approving"
+                      ? "Finalizing the approved brief…"
+                      : "Closing the run. The draft stays here for reference."}
+                </span>
+                <span className="ml-auto hidden font-mono text-xs text-indigo-700 tabular-nums sm:inline">
+                  {clock(elapsed)}
+                </span>
               </div>
             )}
-            <div className={cx("transition-opacity", phase === "revising" && "opacity-60")}>
+            <div className={cx("transition-opacity duration-500", phase === "revising" && "opacity-60")}>
               <StructuredReport
                 payload={payload}
                 ns="run"
                 revision={revision}
                 status={statusBadge}
+                flag={flag}
                 tocStickyClass="top-[4.75rem]"
               />
             </div>
@@ -398,26 +683,35 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
       </div>
 
       {showMobileBar && (
-        <div className="screen-only fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/90 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_-18px_rgb(15_23_42/0.35)] backdrop-blur-md lg:hidden">
-          {phase === "review" ? (
+        <div className="screen-only fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-surface/90 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_-18px_rgb(15_23_42/0.35)] backdrop-blur-md lg:hidden">
+          {phase === "review" && reviewError ? (
+            <div className="flex items-center gap-3" role="alert">
+              <Icon name="alert" className="h-4 w-4 shrink-0 text-rose-600" />
+              <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{reviewError.title}</p>
+              {reviewError.actions.includes("retry") && (
+                <button type="button" onClick={() => recover("retry")} className={cx(btn.primary, "shrink-0", tap)}>
+                  <Icon name="refresh" />
+                  Retry
+                </button>
+              )}
+              <button type="button" onClick={() => recover("back")} className={cx(btn.ghost, "shrink-0", tap)}>
+                Dismiss
+              </button>
+            </div>
+          ) : phase === "review" ? (
             <div className="flex gap-2">
-              <button type="button" onClick={() => resume("approve")} className={cx(btn.primary, "flex-1")}>
+              <button type="button" onClick={() => resume("approve")} className={cx(btn.primary, "flex-1", tap)}>
                 <Icon name="check" />
                 Approve
               </button>
-              <button
-                type="button"
-                onClick={openReview}
-                disabled={revision >= MAX_REVISIONS}
-                className={cx(btn.secondary, "flex-1")}
-              >
+              <button type="button" onClick={openReview} className={cx(btn.secondary, "flex-1", tap)}>
                 <Icon name="edit" />
-                Request changes
+                {revision >= MAX_REVISIONS ? "Review options" : "Request changes"}
               </button>
             </div>
           ) : (
-            <p role="status" className="flex items-center gap-2.5 text-sm font-medium text-slate-800">
-              <span aria-hidden className="h-2 w-2 shrink-0 animate-blink rounded-full bg-indigo-500" />
+            <p role="status" className="flex min-h-11 items-center gap-2.5 text-sm font-medium text-slate-800">
+              <Spinner className="h-4 w-4 text-indigo-600" />
               <span className="min-w-0 truncate">{HEADLINE[phase]}</span>
               <span className="ml-auto font-mono text-xs text-slate-500 tabular-nums">{clock(elapsed)}</span>
             </p>
@@ -435,7 +729,9 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
               ? reviewStatus === "auto_approved"
                 ? "Final"
                 : "Approved"
-              : "Draft, not yet approved"
+              : rejected
+                ? "Rejected by reviewer"
+                : "Draft, not yet approved"
             : "Sample data"
         }
       />
@@ -443,11 +739,79 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   );
 }
 
+const RECOVERY_LABEL: Record<Recovery, { text: string; icon?: IconName }> = {
+  retry: { text: "Try again", icon: "refresh" },
+  back: { text: "Back to the draft" },
+  new: { text: "Start new research", icon: "arrowRight" },
+  edit: { text: "Edit question", icon: "edit" },
+};
+
+/** A failure, said plainly, with the right way out as the primary button. */
+function ErrorCard({
+  error,
+  onAction,
+  compact = false,
+}: {
+  error: RunError;
+  onAction: (r: Recovery) => void;
+  compact?: boolean;
+}) {
+  const bad = error.tone === "bad";
+  return (
+    <div
+      role="alert"
+      className={cx(
+        cardBase,
+        "flex animate-enter gap-3",
+        compact ? "flex-col p-4" : "flex-col p-4 sm:flex-row sm:items-center sm:p-5",
+        bad ? "border-rose-200 bg-rose-50/70" : "border-amber-200 bg-amber-50/70",
+      )}
+    >
+      <div className="flex min-w-0 flex-1 gap-3">
+        <span
+          className={cx(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+            bad ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700",
+          )}
+        >
+          <Icon name="alert" />
+        </span>
+        <div className="min-w-0">
+          <p className={cx("text-sm font-semibold", bad ? "text-rose-900" : "text-amber-950")}>{error.title}</p>
+          {error.message && (
+            <p className={cx("mt-0.5 text-sm leading-relaxed", bad ? "text-rose-800" : "text-amber-800")}>
+              {error.message}
+            </p>
+          )}
+        </div>
+      </div>
+      {error.actions.length > 0 && (
+        <div className={cx("flex flex-wrap gap-2", compact ? "pl-12" : "sm:shrink-0")}>
+          {error.actions.map((a, i) => {
+            const l = RECOVERY_LABEL[a];
+            return (
+              <button
+                key={a}
+                type="button"
+                onClick={() => onAction(a)}
+                className={cx(i === 0 ? btn.primary : btn.secondary, tap)}
+              >
+                {l.icon && <Icon name={l.icon} />}
+                {l.text}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Report column + sticky right rail (review, run status, actions). On narrow screens
  *  the rail follows the report. */
 function ReportLayout({ children, aside }: { children: React.ReactNode; aside: React.ReactNode }) {
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18.5rem] xl:gap-8">
+    <div className="grid animate-enter items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18.5rem] xl:gap-8">
       <div className="min-w-0">{children}</div>
       <aside
         aria-label="Review and actions"
@@ -463,10 +827,10 @@ function ReportLayout({ children, aside }: { children: React.ReactNode; aside: R
 function ReportSkeleton() {
   const bar = "rounded-full animate-pulse-soft";
   return (
-    <div className="space-y-3">
+    <div className="animate-enter space-y-3">
       <p className="flex items-center gap-2 text-sm text-slate-500">
         <Icon name="file" className="h-4 w-4" />
-        Your brief appears here as soon as the writer finishes.
+        Your brief takes shape here as soon as the writer finishes.
       </p>
       <div aria-hidden className="space-y-4">
         <div className="rounded-2xl bg-ink-950 p-6 ring-1 ring-ink-700/70 sm:p-8">
@@ -495,19 +859,15 @@ function ReportSkeleton() {
   );
 }
 
-function doneSpecialists(): Partial<Steps> {
-  return Object.fromEntries(SPECIALISTS.map((s) => [s, "done"])) as Partial<Steps>;
-}
-
 function EmptyState({ onSample }: { onSample: () => void }) {
   const steps: [IconName, string, string][] = [
     ["target", "Plan", "Atlas scopes your question and picks what to research."],
     ["users", "Research", "Four analysts cover financials, news, market and risk in parallel."],
     ["scale", "Debate", "A bull and a bear argue both sides of the evidence."],
-    ["check", "Review", "You get a cited draft to approve or send back with changes."],
+    ["check", "Review", "You approve the cited draft, send it back with changes, or reject it."],
   ];
   return (
-    <section aria-labelledby="empty-title" className={cx(surface, "p-5 sm:p-7")}>
+    <section aria-labelledby="empty-title" className={cx(surface, "animate-enter p-5 sm:p-7")}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className={eyebrow}>What happens next</p>
@@ -515,16 +875,18 @@ function EmptyState({ onSample }: { onSample: () => void }) {
             Four steps from question to reviewed brief
           </h2>
         </div>
-        <span className="font-mono text-xs text-slate-400">~2 min per run</span>
+        <span className="font-mono text-xs text-slate-500">~2 min per run</span>
       </div>
       <ol className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {steps.map(([icon, t, d], i) => (
           <li key={t} className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4">
             <div className="flex items-center justify-between">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-xs ring-1 ring-slate-200">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface text-indigo-700 shadow-xs ring-1 ring-slate-200">
                 <Icon name={icon} className="h-4.5 w-4.5" />
               </span>
-              <span className="font-display text-2xl text-slate-300">{String(i + 1).padStart(2, "0")}</span>
+              <span aria-hidden className="font-display text-2xl text-slate-300">
+                {String(i + 1).padStart(2, "0")}
+              </span>
             </div>
             <p className="mt-4 text-sm font-semibold text-slate-950">{t}</p>
             <p className="mt-1 text-sm leading-relaxed text-slate-600">{d}</p>
@@ -532,7 +894,7 @@ function EmptyState({ onSample }: { onSample: () => void }) {
         ))}
       </ol>
       <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-5">
-        <button type="button" onClick={onSample} className={btn.secondary}>
+        <button type="button" onClick={onSample} className={cx(btn.secondary, tap)}>
           <Icon name="file" />
           Preview a sample report
         </button>

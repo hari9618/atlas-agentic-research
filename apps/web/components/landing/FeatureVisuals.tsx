@@ -12,7 +12,7 @@ function Frame({ children, className }: { children: React.ReactNode; className?:
       className={cx(
         cardBase,
         "border-slate-200/80 p-4 shadow-[0_12px_32px_-16px_rgb(15_23_42/0.18)] sm:p-5",
-        !className?.includes("bg-") && "bg-white",
+        !className?.includes("bg-") && "bg-surface",
         className,
       )}
     >
@@ -101,7 +101,7 @@ export function ReviewVisual() {
       <p className="text-xs font-semibold tracking-wider text-indigo-600 uppercase">Your review</p>
       <p className="mt-1 text-base font-semibold text-slate-900">Is this report ready?</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">
+        <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-accent-400 px-3 py-2 text-sm font-semibold text-ink-950">
           <Icon name="check" /> Approve
         </span>
         <span className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800">
@@ -154,7 +154,7 @@ export function CompetitorsVisual() {
 export function PdfVisual() {
   return (
     <Frame className="flex justify-center bg-slate-50">
-      <div className="w-full max-w-[16rem] rounded-md border border-slate-200 bg-white p-4 shadow-md">
+      <div className="w-full max-w-[16rem] rounded-md border border-slate-200 bg-surface p-4 shadow-md">
         <div className="border-b-2 border-indigo-700 pb-2">
           <p className="text-[9px] font-semibold tracking-widest text-slate-500 uppercase">Atlas · Due-diligence brief</p>
           <p className="mt-1 text-sm font-bold text-slate-900">Helios Robotics</p>

@@ -5,8 +5,8 @@ export type ChipTone = "light" | "dark";
 
 const CHIP: Record<ChipTone, string> = {
   light:
-    "border-slate-200 bg-slate-50 text-slate-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700",
-  dark: "border-white/15 bg-white/[0.06] text-slate-300 hover:border-indigo-300/60 hover:bg-indigo-400/15 hover:text-white",
+    "border-slate-200/90 bg-slate-50 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800 focus-visible:border-indigo-400",
+  dark: "border-white/12 bg-white/[0.06] text-slate-300 hover:border-indigo-300/60 hover:bg-indigo-400/15 hover:text-white",
 };
 
 /** A small, subtle source chip that jumps to the matching entry in Sources. */
@@ -27,7 +27,7 @@ export function SourceChip({
       title={label}
       aria-label={`Source: ${label}`}
       className={cx(
-        "mx-0.5 inline-flex translate-y-[-1px] items-center rounded border px-1.5 py-px align-middle font-mono text-[10px] leading-4 font-medium whitespace-nowrap no-underline transition-colors",
+        "mx-[0.2em] inline-flex -translate-y-px items-center rounded-[5px] border px-1.5 align-middle font-mono text-[10px] leading-[15px] font-medium tracking-tight whitespace-nowrap tabular-nums no-underline transition-colors duration-150",
         CHIP[tone],
       )}
     >

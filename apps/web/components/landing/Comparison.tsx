@@ -54,7 +54,7 @@ function CellView({ c, strong }: { c: Cell; strong?: boolean }) {
 
 export function Comparison() {
   return (
-    <section id="compare" aria-labelledby="compare-title" className="scroll-mt-24 bg-white py-24 sm:py-28">
+    <section id="compare" aria-labelledby="compare-title" className="scroll-mt-24 bg-surface py-24 sm:py-28">
       <Container>
         <div className="reveal">
           <SectionHeading
@@ -67,7 +67,7 @@ export function Comparison() {
         </div>
 
         {/* Desktop table */}
-        <div className="reveal mt-14 hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_30px_80px_-40px_rgb(15_23_42/0.25)] md:block">
+        <div className="reveal mt-14 hidden overflow-hidden rounded-3xl border border-slate-200/80 bg-surface shadow-[0_30px_80px_-40px_rgb(15_23_42/0.25)] md:block">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-200">
@@ -115,7 +115,7 @@ export function Comparison() {
         {/* Phone: one card per capability */}
         <ul className="mt-12 space-y-3 md:hidden">
           {ROWS.map((r) => (
-            <li key={r.label} className="rounded-2xl border border-slate-200/80 bg-white p-4">
+            <li key={r.label} className="rounded-2xl border border-slate-200/80 bg-surface p-4">
               <p className="text-sm font-semibold text-slate-900">{r.label}</p>
               <dl className="mt-3 space-y-2">
                 {r.cells.map((c, i) => (

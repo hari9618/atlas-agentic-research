@@ -3,8 +3,9 @@ import { cx } from "@/components/ui/styles";
 import { Cited } from "./Cited";
 
 /** Rendering context threaded through the report: an anchor namespace (so two
- *  reports on one page don't clash) and the heading level of the report title. */
-export type Ctx = { ns: string; hl: 2 | 3 };
+ *  reports on one page don't clash), the heading level of the report title, and an
+ *  optional flagged section (e.g. the one a reviewer asked to change). */
+export type Ctx = { ns: string; hl: 2 | 3; flag?: { block: string; label: string } };
 
 export function sectionId(c: Ctx, id: string) {
   return `${c.ns}-${id}`;
@@ -35,27 +36,43 @@ export function Section({
 }) {
   const H = c.hl === 2 ? "h3" : "h4";
   const sid = sectionId(c, id);
+  const flagged = c.flag?.block === id;
   return (
     <section
       id={sid}
       aria-labelledby={`${sid}-title`}
       className={cx(
-        "scroll-mt-32 border-t border-slate-200/70 px-5 py-8 first-of-type:border-t-0 @2xl:px-10 @2xl:py-10",
+        "relative scroll-mt-32 border-t border-slate-200/70 px-5 py-8 transition-colors duration-500 first-of-type:border-t-0 @2xl:px-10 @2xl:py-10",
+        flagged && "bg-indigo-50/40",
         className,
       )}
     >
+      {flagged && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-indigo-500" />}
       <header className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          {n != null && (
-            <p aria-hidden className="flex items-center gap-2.5 font-mono text-[11px] font-medium text-indigo-600 tabular-nums">
-              {String(n).padStart(2, "0")}
-              <span className="h-px w-8 bg-indigo-600/30" />
-            </p>
+          {(n != null || flagged) && (
+          <p className="mb-2 flex items-center gap-2.5 font-mono text-[11px] font-medium text-indigo-600 tabular-nums">
+            {n != null && (
+              <>
+                <span aria-hidden>{String(n).padStart(2, "0")}</span>
+                <span aria-hidden className="h-px w-8 bg-indigo-600/30" />
+              </>
+            )}
+            {flagged && (
+              <span className="screen-only inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2 py-0.5 font-sans text-[11px] font-semibold text-indigo-800">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                {c.flag!.label}
+              </span>
+            )}
+          </p>
           )}
-          <H id={`${sid}-title`} className="mt-2 font-display text-[1.75rem] leading-[1.1] tracking-tight text-slate-950">
+          <H
+            id={`${sid}-title`}
+            className="font-display text-[1.625rem] leading-[1.1] tracking-tight text-balance text-slate-950 @2xl:text-[1.875rem]"
+          >
             {title}
           </H>
-          {description && <p className="mt-1.5 text-sm text-slate-500">{description}</p>}
+          {description && <p className="mt-1.5 max-w-[60ch] text-sm leading-relaxed text-slate-500">{description}</p>}
         </div>
         {aside && <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div>}
       </header>

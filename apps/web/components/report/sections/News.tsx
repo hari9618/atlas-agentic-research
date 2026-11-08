@@ -55,7 +55,7 @@ export function NewsAndSentiment({ s, c, n }: P) {
                 <div className="relative border-l border-slate-200 pb-7 pl-6 group-last:pb-0">
                   <span
                     aria-hidden
-                    className={cx("absolute top-1.5 -left-[5px] h-2.5 w-2.5 rounded-full ring-4 ring-white", toneDot[tone])}
+                    className={cx("absolute top-1.5 -left-[5px] h-2.5 w-2.5 rounded-full ring-4 ring-surface", toneDot[tone])}
                   />
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     {hasText(d.date) && (

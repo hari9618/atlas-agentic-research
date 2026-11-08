@@ -32,7 +32,7 @@ function roleOf(role: string) {
     label: titleCase(role),
     icon: "users" as IconName,
     avatar: "bg-slate-200 text-slate-700",
-    bubble: "border-slate-200 bg-white",
+    bubble: "border-slate-200 bg-surface",
   };
 }
 

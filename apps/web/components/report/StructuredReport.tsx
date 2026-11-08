@@ -54,6 +54,7 @@ export function StructuredReport({
   status,
   showEvidence = true,
   tocStickyClass = "top-20",
+  flag,
   className,
 }: {
   payload: Partial<ResearchPayload>;
@@ -65,9 +66,11 @@ export function StructuredReport({
   showEvidence?: boolean;
   /** Sticky offset of the mobile section chips; match the page's sticky header. */
   tocStickyClass?: string;
+  /** Mark one section (by block id), e.g. the one a reviewer asked to change. */
+  flag?: Ctx["flag"];
   className?: string;
 }) {
-  const c: Ctx = { ns, hl: headingLevel };
+  const c: Ctx = { ns, hl: headingLevel, flag };
   const s = payload.report_sections;
   const uncertainties = s?.uncertainties?.length ? s.uncertainties : payload.uncertainties ?? [];
   const confidence = payload.confidence ?? s?.confidence ?? null;

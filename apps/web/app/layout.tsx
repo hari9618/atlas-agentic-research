@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { Interactions } from "@/components/ui/Interactions";
 
 // Three faces: Inter for UI and body copy, Instrument Serif for editorial
 // headlines, JetBrains Mono for figures, tickers and small labels. Exposed as CSS
@@ -27,13 +28,32 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#05070d",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fcfdfb" },
+    { media: "(prefers-color-scheme: dark)", color: "#050605" },
+  ],
 };
+
+// Runs before first paint so a dark-theme visitor never sees a light flash. Dark is
+// the brand default; the switch (and a stored choice) can make it light.
+const THEME_INIT = `(function(){var t;try{t=localStorage.getItem("atlas-theme")}catch(e){}
+if(t!=="light"&&t!=="dark"){t="dark"}
+document.documentElement.dataset.theme=t})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`h-full ${sans.variable} ${display.variable} ${mono.variable}`}>
-      <body className="min-h-full">{children}</body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`h-full ${sans.variable} ${display.variable} ${mono.variable}`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
+      <body className="min-h-full">
+        {children}
+        <Interactions />
+      </body>
     </html>
   );
 }

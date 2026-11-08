@@ -1,10 +1,12 @@
 @import "tailwindcss";
 
 /* ---- Design tokens (Tailwind 4: @theme exposes them as utilities) -----------
-   Two surfaces: a deep "ink" for the hero, product shots and closing sections, and
-   white / slate-50 for reading. Indigo is the accent; emerald / amber / rose mean
-   positive / neutral / negative (and low / medium / high severity). Shared class
-   recipes live in components/ui/styles.ts. */
+   Black, lime and white. Near-black canvas (dark is the default theme) or white;
+   neutral grey-green text (the slate scale, retuned); a green text accent (the indigo
+   scale, retuned: lime in dark mode, deep green in light); and ONE filled accent,
+   lime (accent-*). "Ink" surfaces stay dark in both themes. Emerald / amber / rose mean positive / neutral / negative.
+   Dark mode flips these same variables further down, so components need no dark:
+   variants. Shared class recipes live in components/ui/styles.ts. */
 @theme inline {
   --font-sans:
     var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
@@ -14,16 +16,88 @@
 }
 
 @theme {
-  --color-ink-950: #05070d;
-  --color-ink-900: #0a0e1a;
-  --color-ink-850: #0e1322;
-  --color-ink-800: #151b2e;
-  --color-ink-700: #222a42;
+  --color-ink-950: #050605;
+  --color-ink-900: #0a0b0a;
+  --color-ink-850: #0f110e;
+  --color-ink-800: #151814;
+  --color-ink-700: #22261f;
+
+  --color-surface: #fcfdfb;
+
+  --color-accent-300: #e3fb93;
+  --color-accent-400: #d4f75a;
+  --color-accent-500: #b9e03b;
+  /* Legacy names for the accent, kept until every usage says accent-*. */
+  --color-gold-300: var(--color-accent-300);
+  --color-gold-400: var(--color-accent-400);
+  --color-gold-500: var(--color-accent-500);
+
+  --color-slate-50: #f5f6f3;
+  --color-slate-100: #eceee9;
+  --color-slate-200: #dee1da;
+  --color-slate-300: #c4c8bf;
+  --color-slate-400: #9a9f95;
+  --color-slate-500: #686d63;
+  --color-slate-600: #4f544a;
+  --color-slate-700: #3a3e36;
+  --color-slate-800: #262924;
+  --color-slate-900: #161815;
+  --color-slate-950: #0b0c0a;
+
+  --color-indigo-50: #f4fbe6;
+  --color-indigo-100: #e6f6c8;
+  --color-indigo-200: #cdeb98;
+  --color-indigo-300: #b2dc63;
+  --color-indigo-400: #8fc23c;
+  --color-indigo-500: #6a9a1f;
+  --color-indigo-600: #527a16;
+  --color-indigo-700: #3f6212;
+  --color-indigo-800: #33500f;
+  --color-indigo-900: #27400c;
+  --color-indigo-950: #172808;
 
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
   --animate-marquee: marquee 48s linear infinite;
   --animate-scan: scan 3.2s ease-in-out infinite;
   --animate-blink: blink 2.4s ease-in-out infinite;
+  /* A block arriving (state changes in the workspace): a short rise and fade. */
+  --animate-enter: enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Indeterminate progress: a segment gliding across its track. */
+  --animate-indeterminate: indeterminate 1.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  /* A soft halo that breathes around a working status dot (calmer than ping). */
+  --animate-halo: halo 2.2s ease-out infinite;
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes indeterminate {
+    from {
+      transform: translateX(-110%);
+    }
+    to {
+      transform: translateX(260%);
+    }
+  }
+
+  @keyframes halo {
+    0% {
+      opacity: 0.55;
+      transform: scale(0.7);
+    }
+    80%,
+    100% {
+      opacity: 0;
+      transform: scale(1.6);
+    }
+  }
 
   @keyframes pulse-soft {
     0%,
@@ -81,19 +155,13 @@
   mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 30%, transparent 100%);
 }
 
-/* Gradient text for the one emphasised phrase in a headline. */
+/* The one emphasised phrase in a headline. */
 @utility text-shine {
-  background-image: linear-gradient(100deg, #c7d2fe 0%, #a5b4fc 30%, #7dd3fc 65%, #6ee7b7 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--color-gold-300);
 }
 
 @utility text-shine-dark {
-  background-image: linear-gradient(100deg, #4338ca 0%, #4f46e5 40%, #0284c7 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--color-indigo-700);
 }
 
 /* Fade the ends of a horizontally scrolling strip. */
@@ -108,7 +176,7 @@
   }
 
   body {
-    @apply bg-white font-sans text-slate-900 antialiased;
+    @apply bg-surface font-sans text-slate-900 antialiased;
     font-feature-settings: "cv11", "ss01";
   }
 
@@ -120,8 +188,8 @@
   }
 
   ::selection {
-    background: var(--color-indigo-200);
-    color: var(--color-slate-900);
+    background: var(--color-accent-400);
+    color: var(--color-ink-950);
   }
 
   /* Native <details> accordions: hide the default marker; we draw our own chevron. */
@@ -148,6 +216,274 @@
       transition-duration: 0.01ms !important;
     }
   }
+}
+
+/* ---- Dark theme --------------------------------------------------------------
+   <html data-theme="dark"> (set before paint by the script in app/layout.tsx). Screen
+   only, so a report printed from dark mode still comes out as a light PDF. */
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --color-surface: #070807;
+
+    --color-slate-50: #0e100d;
+    --color-slate-100: #151814;
+    --color-slate-200: #20241e;
+    --color-slate-300: #2e332b;
+    --color-slate-400: #5c6258;
+    --color-slate-500: #8c9287;
+    --color-slate-600: #a8ada3;
+    --color-slate-700: #c5c9c0;
+    --color-slate-800: #dde0d9;
+    --color-slate-900: #eff1ec;
+    --color-slate-950: #f8f9f6;
+
+    --color-indigo-50: #131b08;
+    --color-indigo-100: #19240b;
+    --color-indigo-200: #263710;
+    --color-indigo-600: #c6ec7a;
+    --color-indigo-700: #d4f58f;
+    --color-indigo-800: #e2fab0;
+    --color-indigo-900: #f0fdd4;
+
+    --color-emerald-50: #0f2a1f;
+    --color-emerald-100: #123526;
+    --color-emerald-200: #1c4a37;
+    --color-emerald-700: #6ee7b7;
+    --color-emerald-800: #a7f3d0;
+    --color-emerald-900: #d1fae5;
+    --color-emerald-950: #ecfdf5;
+    --color-amber-50: #2c2208;
+    --color-amber-100: #3a2c0a;
+    --color-amber-200: #4a3a10;
+    --color-amber-700: #fcd34d;
+    --color-amber-800: #fde68a;
+    --color-amber-950: #fffbeb;
+    --color-rose-50: #2f1218;
+    --color-rose-100: #3d161e;
+    --color-rose-200: #5a2029;
+    --color-rose-700: #fda4af;
+    --color-rose-800: #fecdd3;
+    --color-rose-900: #ffe4e6;
+  }
+
+  /* Ink surfaces are already dark: inside them, keep the light-theme values. */
+  :root[data-theme="dark"] :is([class*="bg-ink-9"], [class*="bg-ink-8"]) {
+    --color-surface: #fcfdfb;
+
+    --color-slate-50: #f5f6f3;
+    --color-slate-100: #eceee9;
+    --color-slate-200: #dee1da;
+    --color-slate-300: #c4c8bf;
+    --color-slate-400: #9a9f95;
+    --color-slate-500: #686d63;
+    --color-slate-600: #4f544a;
+    --color-slate-700: #3a3e36;
+    --color-slate-800: #262924;
+    --color-slate-900: #161815;
+    --color-slate-950: #0b0c0a;
+
+    --color-indigo-50: #f4fbe6;
+    --color-indigo-100: #e6f6c8;
+    --color-indigo-200: #cdeb98;
+    --color-indigo-600: #527a16;
+    --color-indigo-700: #3f6212;
+    --color-indigo-800: #33500f;
+    --color-indigo-900: #27400c;
+
+    --color-emerald-50: #ecfdf5;
+    --color-emerald-100: #d1fae5;
+    --color-emerald-200: #a7f3d0;
+    --color-emerald-700: #047857;
+    --color-emerald-800: #065f46;
+    --color-emerald-900: #064e3b;
+    --color-emerald-950: #022c22;
+    --color-amber-50: #fffbeb;
+    --color-amber-100: #fef3c7;
+    --color-amber-200: #fde68a;
+    --color-amber-700: #b45309;
+    --color-amber-800: #92400e;
+    --color-amber-950: #451a03;
+    --color-rose-50: #fff1f2;
+    --color-rose-100: #ffe4e6;
+    --color-rose-200: #fecdd3;
+    --color-rose-700: #be123c;
+    --color-rose-800: #9f1239;
+    --color-rose-900: #881337;
+  }
+}
+
+/* ---- Hero ----------------------------------------------------------------------
+   Black canvas with a lime glow and fine light rays; the macaw film (HeroStage)
+   sits in a framed panel beside the headline. */
+.hero-plate {
+  background:
+    radial-gradient(60% 58% at 50% 100%, rgb(212 247 90 / 0.32), transparent 72%),
+    var(--color-surface);
+}
+
+@media screen {
+  :root[data-theme="dark"] .hero-plate {
+    background:
+      radial-gradient(52% 62% at 50% 102%, rgb(202 245 70 / 0.5), rgb(80 120 12 / 0.22) 42%,
+        transparent 74%),
+      var(--color-surface);
+  }
+}
+
+/* Fine vertical light rays rising from the glow. */
+.hero-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, rgb(212 247 90 / 0.09) 0 1px, transparent 1px 9px);
+  mask-image: radial-gradient(45% 70% at 50% 100%, #000, transparent 75%);
+}
+
+/* The hero film: object-position keeps the bird and branch in frame at every aspect
+   ratio (they sit right of centre in the 16:9 source); the pointer leans it gently. */
+.hero-film-media {
+  object-position: 80% 50%;
+  transform: translate3d(calc(var(--px, 0) * -12px), calc(var(--py, 0) * -8px), 0) scale(1.035);
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (width < 40rem) {
+  .hero-film-media {
+    object-position: 82% 50%;
+  }
+}
+
+.hero-copy > * {
+  animation: hero-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(0.15s + var(--i, 0) * 0.09s);
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-copy > * {
+    animation: none;
+  }
+  .hero-film-media {
+    transform: none;
+  }
+}
+
+/* ---- Micro-interactions (wired up by components/ui/Interactions.tsx) ---------- */
+
+/* Tailwind 4 resets buttons to the default cursor: anything clickable says so. */
+:where(button:not(:disabled), [role="button"], [role="switch"], summary, label[for]) {
+  cursor: pointer;
+}
+
+/* Press: a small give under the finger. `scale` (not transform) so it never fights
+   Tailwind's translate utilities. */
+:where(button:not(:disabled), a[class*="rounded-full"], [data-ripple]):active {
+  scale: 0.97;
+}
+
+.ripple-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 9999px;
+  translate: -50% -50%;
+  scale: 0;
+  background: color-mix(in srgb, currentColor 22%, transparent);
+  animation: ripple-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ripple.is-out {
+  opacity: 0;
+}
+
+@keyframes ripple-grow {
+  to {
+    scale: 1;
+  }
+}
+
+/* Cursor spotlight: a soft gold light behind the content and a lit edge nearest
+   the pointer. */
+.spotlight {
+  position: relative;
+  isolation: isolate;
+}
+
+.spotlight::before,
+.spotlight::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.spotlight::before {
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    360px circle at var(--sx, 50%) var(--sy, 50%),
+    color-mix(in srgb, var(--color-gold-400) 13%, transparent),
+    transparent 70%
+  );
+}
+
+.spotlight::after {
+  inset: 0;
+  padding: 1px;
+  background: radial-gradient(
+    240px circle at var(--sx, 50%) var(--sy, 50%),
+    color-mix(in srgb, var(--color-gold-400) 75%, transparent),
+    transparent 65%
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+@media (hover: hover) {
+  .spotlight:hover::before,
+  .spotlight:hover::after {
+    opacity: 1;
+  }
+}
+
+/* Theme switch: the new theme opens as a circle from the switch (ThemeToggle). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* A rule that draws in under a link on hover. */
+.link-rule {
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+  transition: background-size 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.link-rule:hover,
+.link-rule:focus-visible {
+  background-size: 100% 1px;
 }
 
 /* ---- Scroll reveal -----------------------------------------------------------

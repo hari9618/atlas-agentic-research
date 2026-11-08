@@ -12,7 +12,7 @@ export function FinalCta() {
         <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
         <div
           aria-hidden
-          className="absolute -bottom-56 left-1/2 -z-10 h-[34rem] w-[60rem] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(79_70_229/0.45),transparent)]"
+          className="absolute -bottom-56 left-1/2 -z-10 h-[34rem] w-[60rem] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(190_235_70/0.45),transparent)]"
         />
         <div className="reveal mx-auto max-w-2xl text-center">
           <h2 id="cta-title" className="font-display text-4xl leading-[1.02] tracking-tight text-balance sm:text-6xl">
@@ -40,7 +40,7 @@ export function FinalCta() {
             />
             <button
               type="submit"
-              className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:bg-indigo-50 sm:px-5"
+              className="inline-flex shrink-0 items-center gap-2 rounded-full bg-surface px-4 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:bg-indigo-50 sm:px-5"
             >
               <span className="hidden sm:inline">Research</span>
               <Icon name="arrowRight" />

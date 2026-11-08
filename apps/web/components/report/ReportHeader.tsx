@@ -120,11 +120,11 @@ export function ReportHeader({
       <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
       <div
         aria-hidden
-        className="absolute -top-40 -left-24 -z-10 h-[26rem] w-[44rem] bg-[radial-gradient(closest-side,rgb(79_70_229/0.34),transparent)]"
+        className="absolute -top-40 -left-24 -z-10 h-[26rem] w-[44rem] bg-[radial-gradient(closest-side,rgb(190_235_70/0.34),transparent)]"
       />
       <div
         aria-hidden
-        className="absolute -right-24 -bottom-40 -z-10 h-[22rem] w-[30rem] bg-[radial-gradient(closest-side,rgb(14_165_233/0.12),transparent)]"
+        className="absolute -right-24 -bottom-40 -z-10 h-[22rem] w-[30rem] bg-[radial-gradient(closest-side,rgb(190_235_70/0.12),transparent)]"
       />
 
       <div className="px-5 pt-5 pb-6 @2xl:px-8 @2xl:pt-6 @2xl:pb-8">

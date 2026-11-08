@@ -1,7 +1,31 @@
 "use client";
 
 import { Icon } from "@/components/ui/Icon";
-import { btn, cx } from "@/components/ui/styles";
+import { Spinner } from "@/components/ui/Spinner";
+import { btn, cx, tap } from "@/components/ui/styles";
+
+/** Background health of the API (it cold-starts on a free tier). */
+export type EngineState = "checking" | "ready" | "waking" | "unreachable" | "offline";
+
+const MAX_QUERY = 500;
+
+const ENGINE: Record<EngineState, { dot: string; text: string }> = {
+  checking: { dot: "bg-slate-500", text: "Checking the research engine…" },
+  ready: { dot: "bg-accent-400", text: "Research engine online" },
+  waking: { dot: "bg-accent-300 animate-blink", text: "Research engine is waking up · the first run may take a minute to start" },
+  unreachable: { dot: "bg-rose-400", text: "Research engine not responding · Atlas will keep trying when you run" },
+  offline: { dot: "bg-rose-400", text: "You're offline · reconnect to run research" },
+};
+
+function EngineStatus({ state }: { state: EngineState }) {
+  const e = ENGINE[state];
+  return (
+    <p role="status" className="flex items-center gap-2 text-xs text-slate-400">
+      <span aria-hidden className={cx("h-1.5 w-1.5 shrink-0 rounded-full", e.dot)} />
+      <span className="min-w-0">{e.text}</span>
+    </p>
+  );
+}
 
 const EXAMPLES: { text: string; demo?: boolean }[] = [
   { text: "Should I invest in NVIDIA?" },
@@ -18,15 +42,22 @@ export function QueryBox({
   setQuery,
   onSubmit,
   busy,
+  busyLabel = "Researching…",
   compact = false,
+  engine,
+  offline = false,
 }: {
   query: string;
   setQuery: (q: string) => void;
   onSubmit: () => void;
   busy: boolean;
+  busyLabel?: string;
   compact?: boolean;
+  engine?: EngineState;
+  offline?: boolean;
 }) {
   const tooShort = query.trim().length < 3;
+  const blocked = busy || tooShort || offline;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit();
@@ -57,14 +88,16 @@ export function QueryBox({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ask about another company…"
               autoComplete="off"
+              maxLength={MAX_QUERY}
+              enterKeyHint="go"
               className="w-full min-w-0 bg-transparent py-2.5 text-[15px] text-white placeholder:text-slate-500 focus:outline-none"
             />
           </div>
-          <button type="submit" disabled={busy || tooShort} className={cx(btn.light, "py-2")}>
+          <button type="submit" disabled={blocked} className={cx(btn.light, "py-2", tap)}>
             {busy ? (
               <>
-                <span aria-hidden className="h-1.5 w-1.5 animate-blink rounded-full bg-indigo-500" />
-                Researching…
+                <Spinner className="h-3.5 w-3.5 text-indigo-600" />
+                {busyLabel}
               </>
             ) : (
               <>
@@ -86,7 +119,7 @@ export function QueryBox({
       <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
       <div
         aria-hidden
-        className="absolute -top-40 left-1/2 -z-10 h-[26rem] w-[48rem] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(79_70_229/0.35),transparent)]"
+        className="absolute -top-40 left-1/2 -z-10 h-[26rem] w-[48rem] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(190_235_70/0.35),transparent)]"
       />
       <p className="font-mono text-[11px] tracking-[0.18em] text-indigo-300 uppercase">New research</p>
       <h1 id="ask-title" className="mt-3 font-display text-4xl leading-[1.05] tracking-tight text-balance sm:text-5xl">
@@ -113,17 +146,32 @@ export function QueryBox({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g. Should I worry about Helios Robotics as a competitor?"
               autoComplete="off"
+              maxLength={MAX_QUERY}
+              enterKeyHint="go"
               className="w-full min-w-0 bg-transparent py-2.5 text-base text-white placeholder:text-slate-500 focus:outline-none"
             />
           </div>
-          <button type="submit" disabled={busy || tooShort} className={cx(btn.light, "sm:px-6")}>
-            {busy ? "Researching…" : "Run research"}
-            {!busy && <Icon name="arrowRight" />}
+          <button type="submit" disabled={blocked} className={cx(btn.light, "sm:px-6", tap)}>
+            {busy ? (
+              <>
+                <Spinner className="h-3.5 w-3.5 text-indigo-600" />
+                {busyLabel}
+              </>
+            ) : (
+              <>
+                Run research
+                <Icon name="arrowRight" />
+              </>
+            )}
           </button>
         </div>
       </form>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-3 px-1">
+        <EngineStatus state={offline ? "offline" : (engine ?? "checking")} />
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-2">
         <span className="font-mono text-[10px] tracking-wider text-slate-500 uppercase">Try</span>
         {EXAMPLES.map((ex) => (
           <button
@@ -132,7 +180,10 @@ export function QueryBox({
             onClick={() => setQuery(ex.text)}
             disabled={busy}
             title={ex.demo ? "Covered by the demo documents" : "Researched from live sources"}
-            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-slate-300 transition-colors hover:border-white/25 hover:text-white disabled:opacity-50"
+            className={cx(
+              "inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-slate-300 transition-colors hover:border-white/25 hover:text-white disabled:opacity-50",
+              tap,
+            )}
           >
             {ex.text}
           </button>

@@ -162,7 +162,7 @@ export function CorpusPanel() {
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
                 placeholder="e.g. AAPL"
                 autoComplete="off"
-                className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm uppercase placeholder:normal-case placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                className="w-full min-w-0 rounded-lg border border-slate-300 bg-surface px-3 py-1.5 text-sm uppercase placeholder:normal-case placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
               />
               <button type="submit" disabled={busy || !ticker.trim()} className={btn.small}>
                 Fetch

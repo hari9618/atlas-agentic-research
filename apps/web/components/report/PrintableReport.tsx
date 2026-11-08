@@ -135,7 +135,7 @@ export function PrintableReport({
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
   return (
-    <div className="print-only bg-white text-[#0f172a]">
+    <div className="print-only bg-surface text-[#0f172a]">
       {/* Masthead */}
       <header className="border-b-[3px] border-[#3730a3] pb-3">
         <div className="flex items-center justify-between text-[8pt] font-semibold tracking-[0.18em] text-[#64748b] uppercase">
