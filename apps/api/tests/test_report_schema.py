@@ -118,7 +118,6 @@ def _script(monkeypatch, replies):
 
     monkeypatch.setattr(syn, "llm_ready", lambda: True)
     monkeypatch.setattr(syn, "chat", fake_chat)
-    monkeypatch.setattr(syn, "_system_prompt", lambda: "system")
     return calls
 
 

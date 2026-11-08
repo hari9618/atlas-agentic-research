@@ -14,10 +14,11 @@ def test_research_graph_runs_end_to_end_offline(monkeypatch):
     monkeypatch.setenv("ATLAS_OFFLINE_EMBED", "1")
 
     import atlas.core.graph as G
+    from atlas.core.resources import reset_resources
 
     # reset module caches so the index/graph build under offline settings
-    G._index = None
-    G._graph = None
+    reset_resources()
+    G.reset_graph()
 
     out = G.research("Evaluate Helios Robotics as a competitor", thread_id="test-offline")
 
@@ -35,9 +36,10 @@ def test_research_stream_emits_node_events(monkeypatch):
     monkeypatch.setenv("ATLAS_OFFLINE_EMBED", "1")
 
     import atlas.core.graph as G
+    from atlas.core.resources import reset_resources
 
-    G._index = None
-    G._graph = None
+    reset_resources()
+    G.reset_graph()
 
     events = [ev["event"] for ev in G.run_research("Assess Helios risks", thread_id="test-stream")]
     assert events[0] == "start"

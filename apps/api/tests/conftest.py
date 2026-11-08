@@ -6,6 +6,7 @@ use the hashing embedder. Use `setdefault` so an explicit override still wins.
 """
 
 import os
+import tempfile
 
 os.environ.setdefault("ATLAS_OFFLINE_LLM", "1")
 os.environ.setdefault("ATLAS_OFFLINE_EMBED", "1")
@@ -19,3 +20,6 @@ os.environ.setdefault("LANGFUSE_SECRET_KEY", "")
 # DATABASE_URL (an env var beats .env in pydantic-settings). Postgres integration
 # tests opt in explicitly via ATLAS_TEST_DATABASE_URL (tests/test_persistence_pg.py).
 os.environ["DATABASE_URL"] = ""
+# The learning loop's records/policies/experiments go to a throwaway directory, so
+# test runs never pollute the real data/cache/llmops history.
+os.environ["ATLAS_LLMOPS_DIR"] = tempfile.mkdtemp(prefix="atlas-llmops-")

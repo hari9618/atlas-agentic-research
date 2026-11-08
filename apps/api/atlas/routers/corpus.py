@@ -35,7 +35,7 @@ def _slug(value: str) -> str:
 
 def _add(doc: Document) -> dict:
     """Chunk a document into the live index and report what landed."""
-    from ..core.graph import get_index  # late import: keeps the router import-light
+    from ..core.resources import get_index  # late import: keeps the router import-light
 
     index = get_index()
     before = len(index.chunks)
@@ -68,7 +68,7 @@ class TickerRequest(BaseModel):
 @router.get("/status")
 async def status() -> dict:
     """What the agents can currently search."""
-    from ..core.graph import get_index
+    from ..core.resources import get_index
 
     index = await run_in_threadpool(get_index)
     docs: dict[str, str] = {}
@@ -88,7 +88,7 @@ async def clear_corpus() -> dict:
     Useful for a clean run: the app seeds a small sample corpus on startup, and this
     clears it (and anything ingested since) back to empty.
     """
-    from ..core.graph import get_index
+    from ..core.resources import get_index
 
     def _clear() -> int:
         index = get_index()

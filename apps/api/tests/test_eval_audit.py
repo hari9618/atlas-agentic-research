@@ -7,7 +7,8 @@ Each test pins a bug found by running the evaluator on real reports:
 * findings carried only 500 chars of evidence, so true claims whose figures sat later
   in the chunk were scored "unsupported".
 * gpt-oss cited with 【web_search#0】 brackets the UI and guardrails couldn't read.
-* the optimizer's candidate prompt was served to every concurrent user run.
+* the old optimizer's candidate prompt reached concurrent user runs (that loop is
+  gone; candidates are now replayed offline — see test_learning_loop.py).
 * retrieval context precision divided by distinct documents, capping it near 0.4.
 """
 
@@ -20,9 +21,7 @@ import pytest
 from atlas.core.agents import findings as F
 from atlas.core.agents.report_schema import normalize_brackets, normalize_sections
 from atlas.core.llmops import evaluate as E
-from atlas.core.llmops import optimizer as O
 from atlas.core.llmops.agent_eval import score_agent
-from atlas.core.llmops.registry import PromptRegistry
 from atlas.core.llmops.report_verify import report_statements, verify_report
 from atlas.core.rag.types import Chunk, RetrievedChunk
 from atlas.eval.ragas_eval import _num
@@ -155,51 +154,6 @@ def test_ragas_nan_counts_as_zero():
 
 
 # ---- the canary never reaches live traffic --------------------------------------------
-
-def test_candidate_prompt_is_not_served_live(tmp_path):
-    reg = PromptRegistry(path=tmp_path / "r.json")
-    active = reg.effective("synthesizer_system")
-    reg.set_candidate("synthesizer_system", "UNPROVEN PROMPT")
-    assert reg.effective("synthesizer_system") == active
-
-
-def test_trial_prompt_reaches_only_its_own_run(monkeypatch):
-    from atlas.core import graph as G
-    from atlas.core.agents import synthesizer as S
-
-    seen: list[str] = []
-
-    def fake_chat(prompt, *, system=None, **kw):
-        seen.append(system)
-        return '{"company": "Helios", "headline": "ok", "stance": "neutral", "confidence": 0.5}'
-
-    monkeypatch.setattr(S, "llm_ready", lambda: True)
-    monkeypatch.setattr(S, "chat", fake_chat)
-    G.research("Evaluate Helios Robotics", thread_id="trial-a", prompt_override="TRIAL PROMPT",
-               score=False)
-    G.research("Evaluate Helios Robotics", thread_id="trial-b", score=False)
-    assert seen[0] == "TRIAL PROMPT"
-    assert seen[-1] != "TRIAL PROMPT"  # a normal run uses the active prompt
-
-
-def test_optimizer_discards_the_candidate_even_if_a_run_fails(monkeypatch, tmp_path):
-    reg = PromptRegistry(path=tmp_path / "r.json")
-    monkeypatch.setattr(O, "get_registry", lambda: reg)
-    calls = {"n": 0}
-
-    def fake_research(query, **kw):
-        calls["n"] += 1
-        if kw.get("prompt_override"):
-            raise RuntimeError("Groq 429")
-        return {"report": "## S\n- something vague here today.\n", "findings": []}
-
-    from atlas.core import graph as G
-
-    monkeypatch.setattr(G, "research", fake_research)
-    with pytest.raises(RuntimeError):
-        O.optimize("Evaluate Helios Robotics", max_iters=1)
-    assert reg.candidate("synthesizer_system") is None  # cleaned up, not left live
-
 
 # ---- live-run regressions (Reliance, after web search was fixed) ----------------------
 

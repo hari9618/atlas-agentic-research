@@ -1,7 +1,7 @@
 """The release gate — did the run pass? If not, why?
 
 A run must clear every threshold to pass. The failing reasons become the diagnosis
-the optimizer uses to rewrite the prompt.
+a human reads on the dashboard.
 """
 
 from __future__ import annotations

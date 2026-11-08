@@ -5,8 +5,13 @@ and uncertainties together, so there is no second "meta" call to pay for. The JS
 normalized to the contract, rendered to markdown, and the grounding guardrail measures
 citation coverage on that markdown to temper the confidence.
 
-On a human revision request the previous draft and the reviewer's feedback are part
-of the prompt, so the rewrite addresses the feedback instead of starting over.
+On a human revision request the previous draft and the reviewer's feedback (and the
+section it targets) are part of the prompt, so the rewrite addresses the feedback
+instead of starting over.
+
+The system prompt is the synthesizer's active *policy* (base instruction + lessons
+learned from past reviews, see ``llmops.policy``). ``synthesize_with`` takes an
+explicit policy so the learning loop can replay a candidate on recorded inputs.
 
 Failure ladder (design §5): bad JSON → one strict "JSON only" retry → plain markdown
 brief with ``report_sections=None`` → if even that fails, the run errors.
@@ -17,10 +22,9 @@ from __future__ import annotations
 import json
 import logging
 
-from langchain_core.runnables import RunnableConfig
-
 from ...config import get_settings
 from ..guardrails import apply_grounding_guardrail
+from ..llmops.policy import Policy, get_policies, prompt_block
 from ..state import ResearchState
 from .base import chat, extract_json, llm_ready, salvage_json_object
 from .report_render import render_markdown
@@ -101,11 +105,13 @@ def _revision_block(state: ResearchState) -> str:
     feedback = (state.get("feedback") or "").strip()
     if revision <= 0 or not feedback:
         return ""
+    section = (state.get("feedback_section") or "").strip()
+    about = f" about the {section.replace('_', ' ')} section" if section else ""
     prev = state.get("report_sections")
     prev_text = (json.dumps(prev, ensure_ascii=False)[:3000] if prev
                  else (state.get("report") or "")[:3000])
     return (
-        f"\n\nREVISION {revision}: a human reviewer read the previous draft and asked:\n"
+        f"\n\nREVISION {revision}: a human reviewer read the previous draft and asked{about}:\n"
         f'"{feedback}"\n'
         "Address this feedback specifically: expand or correct the sections it concerns "
         "using the findings (follow-up findings gathered for this feedback are tagged "
@@ -137,14 +143,10 @@ def _structured_prompt(state: ResearchState) -> str:
     )
 
 
-def _system_prompt() -> str:
-    # System prompt comes from the versioned registry (canary candidate or active
-    # version) so the LLM-Ops loop can improve and release it. Lazy import avoids a cycle.
-    from ..llmops.registry import get_registry
-
-    return get_registry().effective(
-        "synthesizer_system", default="You are a senior analyst writing a grounded, cited brief."
-    )
+def system_prompt(policy: Policy) -> str:
+    """Base instruction plus whatever the learning loop has taught the writer."""
+    block = prompt_block(policy)
+    return policy.system + (f"\n\n{block}" if block else "")
 
 
 _RETRY_NUDGE = (
@@ -154,7 +156,7 @@ _RETRY_NUDGE = (
 )
 
 
-def _structured_sections(state: ResearchState, system: str | None = None) -> dict | None:
+def _structured_sections(state: ResearchState, system: str) -> dict | None:
     """One JSON call; salvage a cut-off reply; else one shorter retry. None if both fail.
 
     The usual failure is the reply hitting the token limit mid-object (rich evidence →
@@ -164,7 +166,6 @@ def _structured_sections(state: ResearchState, system: str | None = None) -> dic
     """
     prompt = _structured_prompt(state)
     budget = get_settings().synth_max_tokens
-    system = system or _system_prompt()
     company = state.get("target") or ""
     for attempt, nudge in enumerate(("", _RETRY_NUDGE)):
         raw = chat(prompt + nudge, system=system, temperature=0.2, max_tokens=budget,
@@ -183,7 +184,7 @@ def _structured_sections(state: ResearchState, system: str | None = None) -> dic
     return None
 
 
-def _markdown_fallback(state: ResearchState, system: str | None = None) -> str:
+def _markdown_fallback(state: ResearchState, system: str) -> str:
     """The pre-structured plain markdown brief — used when JSON generation fails."""
     feedback = (state.get("feedback") or "").strip() if (state.get("revision") or 0) > 0 else ""
     fb = f"\n\nA human reviewer asked: \"{feedback}\" — address it.\n" if feedback else ""
@@ -198,7 +199,7 @@ def _markdown_fallback(state: ResearchState, system: str | None = None) -> str:
         "Bottom Line. 2-4 short sentences or bullets each, no tables. Cite evidence inline "
         "using the bracketed labels; only assert what the findings support; if a section "
         f"has no supporting evidence, write '{NOT_ENOUGH}'",
-        system=system or _system_prompt(), temperature=0.3,
+        system=system, temperature=0.3,
         run_name="synthesizer.report_markdown",
     )
 
@@ -283,18 +284,10 @@ def _offline_sections(state: ResearchState) -> dict:
     return normalize_sections(raw, company=target) or {}
 
 
-def _prompt_override(config: RunnableConfig | None) -> str | None:
-    """A candidate system prompt the LLM-Ops optimizer is trialling on THIS run only.
-
-    Carried in the run config rather than the shared registry, so concurrent user
-    runs keep the active prompt while a candidate is being evaluated.
-    """
-    return ((config or {}).get("configurable") or {}).get("synthesizer_system_override")
-
-
-def synthesize_node(state: ResearchState, config: RunnableConfig | None = None) -> dict:
+def synthesize_with(state: ResearchState, policy: Policy) -> dict:
+    """Write the report from ``state`` under an explicit ``policy``."""
     findings = state.get("findings", [])
-    system = _prompt_override(config)
+    system = system_prompt(policy)
     citations = _collect_citations(findings)
 
     if not llm_ready():
@@ -324,6 +317,10 @@ def synthesize_node(state: ResearchState, config: RunnableConfig | None = None) 
         "uncertainties": uncertainties,
         "citations": citations,
     }
+
+
+def synthesize_node(state: ResearchState) -> dict:
+    return synthesize_with(state, get_policies().active("synthesizer"))
 
 
 def with_uncertainty(state: ResearchState, note: str) -> dict:

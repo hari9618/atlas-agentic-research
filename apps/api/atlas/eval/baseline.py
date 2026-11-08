@@ -20,9 +20,9 @@ log = logging.getLogger("atlas.eval.baseline")
 
 def baseline_run(query: str, *, top_k: int = 6) -> dict:
     """Answer with a single retrieval + one LLM synthesis. No agents, no debate."""
-    from ..core.graph import get_index
     from ..core.rag.crag import corrective_retrieve
     from ..core.rag.web_evidence import web_evidence
+    from ..core.resources import get_index
 
     chunks = corrective_retrieve(
         get_index(), query, top_k=top_k, web_fallback=web_evidence

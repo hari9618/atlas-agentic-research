@@ -10,7 +10,7 @@ Scores every research run without a human, on the brief the reader actually sees
 * **context_precision** — share of the cited evidence that is on-topic for the question
                           (one batched relevance call over the distinct evidence chunks).
 * **overall**           — mean of faithfulness, relevancy and context precision; the
-                          optimizer compares candidates on it.
+                          learning loop's live regression check reads it.
 
 Earlier versions scored "faithfulness" as the share of findings' citations that
 appeared somewhere in the report. That is bookkeeping, not grounding: it read 1.0 on
@@ -171,7 +171,7 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
 
     from .agent_eval import evaluate_agents
 
-    # Per-agent scores stay internal (the optimizer uses them to find the weakest
+    # Per-agent scores stay internal (the learning loop uses them to find the weakest
     # specialist); they are not pushed, to keep the Langfuse Scores panel readable.
     agents = evaluate_agents(findings, query=query, push=False)
     scores = {

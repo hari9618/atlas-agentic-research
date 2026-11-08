@@ -15,7 +15,7 @@ def add_or_reset(left: list | None, right: list | None) -> list:
     """``operator.add`` for lists, except an explicit ``None`` update clears the list.
 
     Why: a thread id can be reused for a brand-new run (``/research/sync`` defaults to
-    ``"default"``, the optimizer reuses ``ops-0``). With a plain ``operator.add`` the
+    ``"default"``). With a plain ``operator.add`` the
     checkpointed findings of the *previous* company would leak into the next report.
     ``run_research`` sends ``None`` for these keys at the start of every run.
     """
@@ -39,7 +39,8 @@ class ResearchState(TypedDict, total=False):
     citations: list[dict]                        # evidence used, with provenance
     # ---- human-in-the-loop review (design §3) ----
     require_review: bool                         # pause for human review after drafting
-    review_status: str        # pending | approved | revision_requested | auto_approved
+    review_status: str  # pending | approved | revision_requested | rejected | auto_approved
     feedback: str                                # latest reviewer feedback
+    feedback_section: str                        # report section the feedback targets
     revision: int                                # 0 for the first draft, +1 per requested change
-    review_history: Annotated[list[dict], add_or_reset]  # {revision, action, feedback}
+    review_history: Annotated[list[dict], add_or_reset]  # {revision, action, feedback, section}

@@ -1,32 +1,12 @@
-"""LLM-Ops tests — registry versioning, gate, automatic eval, self-improvement loop (offline)."""
+"""LLM-Ops tests — the release gate and the automatic per-run evaluation (offline).
+
+The learning loop itself is covered in test_learning_loop.py.
+"""
 
 from __future__ import annotations
 
 from atlas.core.llmops.evaluate import evaluate_run
 from atlas.core.llmops.gate import run_gate
-from atlas.core.llmops.optimizer import optimize
-from atlas.core.llmops.registry import PromptRegistry
-
-
-def test_registry_seed_candidate_and_release(tmp_path):
-    reg = PromptRegistry(path=tmp_path / "reg.json")
-    assert reg.active_version("synthesizer_system") == 1
-    assert reg.effective("synthesizer_system")  # seed text present
-
-    seed = reg.effective("synthesizer_system")
-    reg.set_candidate("synthesizer_system", "A BETTER PROMPT")
-    # The candidate is recorded but never served to live traffic.
-    assert reg.candidate("synthesizer_system") == "A BETTER PROMPT"
-    assert reg.effective("synthesizer_system") == seed
-
-    v = reg.release_candidate("synthesizer_system", {"overall": 0.9}, notes="test")
-    assert v == 2
-    assert reg.active_version("synthesizer_system") == 2
-
-    # persisted across reloads
-    reg2 = PromptRegistry(path=tmp_path / "reg.json")
-    assert reg2.active_version("synthesizer_system") == 2
-    assert reg2.effective("synthesizer_system") == "A BETTER PROMPT"
 
 
 def test_gate_passes_and_fails():
@@ -65,11 +45,3 @@ def test_evaluate_run_scores_the_brief_against_its_evidence():
         "Helios plans to triple revenue to $12.6 billion by 2027"]
     assert 0.0 <= s["overall"] <= 1.0 and s["quality"] in {"good", "ok", "poor"}
     assert "risk" in s["agents"]  # attributed to the specialist
-
-
-def test_optimize_loop_runs_offline():
-    out = optimize("Evaluate Helios Robotics as a competitor", max_iters=1)
-    assert "iterations" in out and len(out["iterations"]) >= 1
-    assert isinstance(out["released"], bool)
-    # every iteration records its scores + gate decision
-    assert all("scores" in it and "passed" in it for it in out["iterations"])

@@ -1,4 +1,4 @@
-"""Postgres integration tests — durable checkpoints, memory and registry.
+"""Postgres integration tests — durable checkpoints, memory and the learning store.
 
 Skipped unless ``ATLAS_TEST_DATABASE_URL`` points at a throwaway database, e.g.::
 
@@ -174,31 +174,23 @@ def test_episodic_memory_on_postgres(pool):
             conn.execute("DELETE FROM atlas_episodes WHERE query LIKE %s", (f"%{tag}",))
 
 
-def test_registry_release_survives_reinstantiation(pool, monkeypatch):
-    import atlas.core.llmops.registry as registry_mod
-    from atlas.core.llmops.registry import PromptRegistry
+def test_learning_store_survives_reinstantiation(pool):
+    from atlas.core.llmops.store import DocumentStore
 
-    name = f"test_prompt_{uuid.uuid4().hex[:8]}"
-    # Seed only this test's prompt so the test never writes rows it doesn't clean up.
-    monkeypatch.setattr(registry_mod, "SEED_PROMPTS", {name: "seed text"})
+    kind = f"test_{uuid.uuid4().hex[:8]}"  # a private kind: never touches real policies
     try:
-        reg = PromptRegistry(pool=pool)
-        assert reg.backend == "postgres"
-        assert reg.active_version(name) == 1
+        store = DocumentStore(kind, pool=pool)
+        assert store.backend == "postgres"
+        store.put("a", {"version": 1})
+        store.put("b", {"version": 2})
+        store.put("a", {"version": 3})  # upsert
 
-        reg.set_candidate(name, "A BETTER PROMPT")
-        assert PromptRegistry(pool=pool).effective(name) == "A BETTER PROMPT"  # canary durable
-
-        assert reg.release_candidate(name, {"faithfulness": 0.9}, notes="pg test") == 2
-
-        reg2 = PromptRegistry(pool=pool)
-        assert reg2.active_version(name) == 2
-        assert reg2.effective(name) == "A BETTER PROMPT"
-        assert [v.version for v in reg2.history(name)] == [1, 2]
-        assert reg2.history(name)[-1].scores == {"faithfulness": 0.9}
+        again = DocumentStore(kind, pool=pool)
+        assert again.get("a")["version"] == 3
+        assert {d["id"] for d in again.list()} == {"a", "b"}
     finally:
         with pool.connection() as conn:
-            conn.execute("DELETE FROM atlas_prompt_registry WHERE name = %s", (name,))
+            conn.execute("DELETE FROM atlas_llmops_documents WHERE kind = %s", (kind,))
 
 
 def test_get_checkpointer_uses_postgres_when_configured(monkeypatch):

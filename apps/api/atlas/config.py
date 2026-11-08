@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     max_revisions: int = 3  # cap the human-feedback → regenerate loop
 
     # ---- Persistence ----
-    # Postgres for durable checkpoints / episodic memory / prompt registry. Empty →
+    # Postgres for durable checkpoints / episodic memory / learning loop. Empty →
     # local SQLite (fine for dev/tests; ephemeral on hosts like Render's free tier).
     database_url: str = ""
 

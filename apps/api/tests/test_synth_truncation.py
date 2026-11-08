@@ -60,7 +60,7 @@ def test_synthesizer_uses_salvaged_sections_without_a_second_call(monkeypatch):
     monkeypatch.setattr(S, "chat", fake_chat)
     state = {"query": "Is Acme a good investment?", "target": "Acme", "findings": [],
              "debate": []}
-    sections = S._structured_sections(state)
+    sections = S._structured_sections(state, "system")
     assert sections and sections["headline"] == "Acme is growing fast."
     assert sections["bottom_line"].startswith("Worth watching")
     assert len(calls) == 1  # salvaged — no wasted retry
@@ -76,7 +76,7 @@ def test_retry_asks_for_a_shorter_reply_when_nothing_is_salvageable(monkeypatch)
 
     monkeypatch.setattr(S, "chat", fake_chat)
     sections = S._structured_sections({"query": "q?", "target": "Acme", "findings": [],
-                                       "debate": []})
+                                       "debate": []}, "system")
     assert sections and len(calls) == 2
     assert "keep it SHORT" in calls[1]
 

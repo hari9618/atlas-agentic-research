@@ -3,7 +3,9 @@
 * ``GET /research/stream`` starts a run and streams per-agent updates over SSE (one
   event per graph node, so the UI can light up agents live). With ``review=1`` the
   run pauses after drafting and ends with ``review_required``; otherwise ``final``.
-* ``GET /research/resume`` continues a paused run with the reviewer's decision.
+* ``GET /research/resume`` continues a paused run with the reviewer's decision:
+  ``approve``, ``revise`` (feedback, optionally aimed at one report ``section``) or
+  ``reject`` (optional reason; the report is not remembered).
   Both are GET because the browser ``EventSource`` only supports GET.
 * Bad input or a bad thread state never yields a plain 4xx on the GET streams (the
   browser ``EventSource`` can't read it): the response is a 200 SSE stream with one
@@ -31,6 +33,7 @@ from ..core.graph import (
     run_research,
     thread_status,
 )
+from ..core.payload import client_view
 
 router = APIRouter(prefix="/research", tags=["research"])
 log = logging.getLogger("atlas.research")
@@ -39,6 +42,12 @@ MAX_FEEDBACK_CHARS = 2000
 MIN_QUERY_CHARS = 3
 MAX_QUERY_CHARS = 500
 MAX_THREAD_ID_CHARS = 128
+# Report sections a reviewer may aim feedback at (report_schema keys).
+REVIEW_SECTIONS = frozenset({
+    "headline", "executive_summary", "company_overview", "financials",
+    "market_position", "competitors", "recent_developments", "sentiment", "risks",
+    "bull_case", "bear_case", "outlook", "bottom_line", "uncertainties",
+})
 _TRUE, _FALSE = {"1", "true", "yes", "on"}, {"0", "false", "no", "off", ""}
 _FRIENDLY_ERROR = ("The research run hit an error (often the free-tier rate limit). "
                    "Please try again in a few seconds.")
@@ -54,7 +63,7 @@ async def research_sync(req: ResearchRequest) -> dict:
     if not get_settings().llm_configured:
         return {"error": "GROQ_API_KEY not configured", "report": "", "confidence": None}
     try:
-        return await run_in_threadpool(research, req.query, thread_id=req.thread_id)
+        return client_view(await run_in_threadpool(research, req.query, thread_id=req.thread_id))
     except Exception as e:  # degrade gracefully instead of a bare 500
         log.warning("research run failed: %s", e)
         return {"error": _FRIENDLY_ERROR, "report": "", "report_sections": None,
@@ -66,7 +75,8 @@ def _sse(events: Iterator[dict]) -> AsyncIterator[dict]:
     async def gen():
         try:
             async for ev in iterate_in_threadpool(events):
-                yield {"event": ev["event"], "data": json.dumps(ev["data"], default=str)}
+                yield {"event": ev["event"],
+                       "data": json.dumps(client_view(ev["data"]), default=str)}
         except Exception as exc:
             log.warning("research stream failed: %s: %s", type(exc).__name__, exc)
             yield {"event": "error",
@@ -133,6 +143,7 @@ async def research_resume(
     thread_id: str | None = None,
     action: str | None = None,
     feedback: str | None = None,
+    section: str | None = None,
 ):
     """Resume a run paused at human review. Emits the same events as /stream and ends
     with another ``review_required`` (new draft) or ``final``. Invalid input or a
@@ -140,10 +151,13 @@ async def research_resume(
     thread = (thread_id or "").strip()
     act = (action or "").strip().lower()
     fb = (feedback or "").strip()
+    sec = (section or "").strip()
     if not thread or len(thread) > MAX_THREAD_ID_CHARS:
         return _error_stream("A valid thread id is required to resume a run.", "bad_request")
-    if act not in ("approve", "revise"):
-        return _error_stream("action must be 'approve' or 'revise'.", "bad_request")
+    if act not in ("approve", "revise", "reject"):
+        return _error_stream("action must be 'approve', 'revise' or 'reject'.", "bad_request")
+    if sec and sec not in REVIEW_SECTIONS:
+        return _error_stream("Unknown report section.", "bad_request")
     if act == "revise" and not fb:
         return _error_stream("Please describe the changes you want.", "bad_request")
     if len(fb) > MAX_FEEDBACK_CHARS:
@@ -156,7 +170,8 @@ async def research_resume(
         return _not_configured()
     try:
         events = await run_in_threadpool(resume_research, thread,
-                                         {"action": act, "feedback": fb})
+                                         {"action": act, "feedback": fb,
+                                          "section": sec})
     except RunNotPausedError:  # raced with another resume of the same thread
         return _error_stream(*_STATE_ERRORS["finished"])
     except ValueError as exc:

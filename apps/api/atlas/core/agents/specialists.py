@@ -1,11 +1,19 @@
 """Supervisor plan + the four specialist analyst agents.
 
-Each specialist gathers grounded evidence for its angle — CRAG hybrid RAG (with the
-live web as the corrective fallback) plus its own research tool (SEC filing, stock
-quote, company news) — then emits findings where **every claim cites a retrieved
-chunk**. Provenance flows into shared state so the synthesizer can build a cited
-report. With no GROQ key each node returns a deterministic stub so the graph still
-runs offline; when retries are exhausted a node degrades instead of failing the run.
+Each specialist works in two steps, kept separate on purpose:
+
+1. ``gather_evidence`` — CRAG hybrid RAG (the live web as the corrective fallback)
+   plus the specialist's own research tool (SEC filing, stock quote, company news).
+2. ``extract_findings`` — turn that evidence into findings where **every claim cites
+   a retrieved chunk**, under the specialist's active *policy* (learned lessons,
+   exemplar findings and retrieval depth, see ``llmops.policy``).
+
+The split lets the learning loop replay a candidate policy against the baseline on
+the *same* evidence, so a measured difference is the policy's, not retrieval noise.
+
+Provenance flows into shared state so the synthesizer can build a cited report. With
+no GROQ key each node returns a deterministic stub so the graph still runs offline;
+when retries are exhausted a node degrades instead of failing the run.
 """
 
 from __future__ import annotations
@@ -13,6 +21,7 @@ from __future__ import annotations
 import logging
 import re
 
+from ..llmops.policy import Policy, get_policies, prompt_block
 from ..memory.procedural import ProceduralMemory
 from ..rag.crag import corrective_retrieve
 from ..rag.entity import entity_terms
@@ -20,6 +29,7 @@ from ..rag.tool_evidence import tool_evidence_for
 from ..rag.types import RetrievedChunk
 from ..rag.web_evidence import web_evidence_about
 from ..resilience import run_or_degrade
+from ..resources import get_index
 from ..state import ResearchState
 from .base import chat, extract_json, format_evidence, llm_ready
 from .findings import (
@@ -60,6 +70,8 @@ SPECIALISTS = [
 ]
 
 DEFAULT_PLAN = [s[0] for s in SPECIALISTS]
+SEARCH_FOCUS = {name: focus for name, focus, _ in SPECIALISTS}
+ROLES = {name: role for name, _, role in SPECIALISTS}
 
 # ---------------------------------------------------------------- supervisor
 
@@ -136,7 +148,8 @@ def plan_node(state: ResearchState) -> dict:
 # ---------------------------------------------------------------- specialists
 
 
-def _merge(tool_chunks: list[RetrievedChunk], crag_chunks: list[RetrievedChunk]):
+def merge_evidence(tool_chunks: list[RetrievedChunk], crag_chunks: list[RetrievedChunk]
+           ) -> list[RetrievedChunk]:
     """Tool evidence first (targeted at this company), then CRAG — no duplicates.
 
     The merged list IS the numbered evidence the model cites by index, so citation
@@ -150,55 +163,66 @@ def _merge(tool_chunks: list[RetrievedChunk], crag_chunks: list[RetrievedChunk])
     return out
 
 
-def _make_specialist(name: str, focus: str, role: str):
-    def run(state: ResearchState) -> dict:
-        from ..graph import get_index  # late import avoids a cycle
+def gather_evidence(name: str, state: ResearchState, top_k: int
+                    ) -> tuple[list[RetrievedChunk], list[RetrievedChunk]]:
+    """``(tool_chunks, crag_chunks)`` for one specialist's angle on the target.
 
-        query = state["query"]
-        target = state.get("target") or ""
-        ticker = state.get("ticker") or ""
-        # web_fallback makes CRAG's corrective step real: when local evidence grades
-        # weak (e.g. the company was never ingested), pull live web evidence instead of
-        # returning nothing — scoped to this company so same-named firms are dropped.
-        result = corrective_retrieve(
-            get_index(), f"{target or query} {focus}", top_k=4,
-            web_fallback=web_evidence_about(target, ticker),
-            entity=entity_terms(target, ticker) if target else None,
-        )
-        if result.used_web_fallback:
-            log.info("%s fell back to web evidence", name)
-        tools = tool_evidence_for(name, target=target, ticker=ticker)
-        chunks = _merge(tools, result.chunks)
+    ``web_fallback`` makes CRAG's corrective step real: when local evidence grades weak
+    (e.g. the company was never ingested), live web evidence is pulled instead —
+    scoped to this company so same-named firms are dropped.
+    """
+    target = state.get("target") or ""
+    ticker = state.get("ticker") or ""
+    result = corrective_retrieve(
+        get_index(), f"{target or state['query']} {SEARCH_FOCUS[name]}", top_k=top_k,
+        web_fallback=web_evidence_about(target, ticker),
+        entity=entity_terms(target, ticker) if target else None,
+    )
+    if result.used_web_fallback:
+        log.info("%s fell back to web evidence", name)
+    return tool_evidence_for(name, target=target, ticker=ticker), result.chunks
 
-        if not llm_ready():
-            cite = chunks[0].chunk.citation() if chunks else "n/a"
-            return {"findings": [{
-                "agent": name, "claim": f"[offline stub] {name} analysis of: {query}",
-                "citation": cite, "confidence": 0.5,
-            }]}
 
-        # Procedural memory (playbook) + episodic memory (prior related analyses).
-        playbook = _procedural.get(name)
-        system = role + (f"\n\nPlaybook:\n{playbook}" if playbook else "")
-        prior = state.get("prior_context") or []
-        prior_block = (
-            "\n\nPrior related analyses (from memory):\n" + "\n".join(f"- {p}" for p in prior)
-            if prior else ""
-        )
-        prompt = (
-            f"{role}\n\nCompany: {target or 'see question'}\nQuestion: {query}{prior_block}"
-            f"\n\nEvidence (cite by index):\n{format_evidence(chunks)}\n\n"
-            + entity_rule(target) + findings_instructions("3-5")
-        )
-        # Extraction, not deliberation: low reasoning effort keeps the hidden reasoning
-        # from eating the output budget (see llm.get_llm) and saves daily tokens.
-        raw = chat(prompt, system=system, temperature=0.2, run_name=f"specialist.{name}",
-                   reasoning_effort="low")
-        findings = parse_findings(name, raw, chunks)
-        if not findings:  # model returned nothing parseable — keep the run honest
-            findings = [{"agent": name, "claim": "No well-grounded finding extracted.",
+def extract_findings(name: str, state: ResearchState, chunks: list[RetrievedChunk],
+                     policy: Policy) -> list[dict]:
+    """Findings for ``name`` from ``chunks``, each citing the chunk it came from."""
+    query = state["query"]
+    target = state.get("target") or ""
+    if not llm_ready():
+        cite = chunks[0].chunk.citation() if chunks else "n/a"
+        return [{"agent": name, "claim": f"[offline stub] {name} analysis of: {query}",
+                 "citation": cite, "confidence": 0.5}]
+
+    # Role + procedural memory (playbook file) + what the learning loop taught it.
+    role = ROLES[name]
+    playbook = _procedural.get(name)
+    learned = prompt_block(policy)
+    system = "\n\n".join(p for p in (role, f"Playbook:\n{playbook}" if playbook else "",
+                                       learned) if p)
+    prior = state.get("prior_context") or []
+    prior_block = ("\n\nPrior related analyses (from memory):\n"
+                   + "\n".join(f"- {p}" for p in prior)) if prior else ""
+    prompt = (
+        f"{role}\n\nCompany: {target or 'see question'}\nQuestion: {query}{prior_block}"
+        f"\n\nEvidence (cite by index):\n{format_evidence(chunks)}\n\n"
+        + entity_rule(target) + findings_instructions("3-5")
+    )
+    # Extraction, not deliberation: low reasoning effort keeps hidden reasoning from
+    # eating the output budget (see llm.get_llm) and saves daily tokens.
+    raw = chat(prompt, system=system, temperature=0.2, run_name=f"specialist.{name}",
+               reasoning_effort="low")
+    findings = parse_findings(name, raw, chunks)
+    return findings or [{"agent": name, "claim": "No well-grounded finding extracted.",
                          "citation": "n/a", "confidence": 0.3}]
-        log.info("%s produced %d findings (%d tool chunks)", name, len(findings), len(tools))
+
+
+def _make_specialist(name: str):
+    def run(state: ResearchState) -> dict:
+        policy = get_policies().active(name)
+        tools, crag = gather_evidence(name, state, policy.top_k)
+        findings = extract_findings(name, state, merge_evidence(tools, crag), policy)
+        log.info("%s produced %d findings (%d tool chunks, top_k=%d)",
+                 name, len(findings), len(tools), policy.top_k)
         return {"findings": findings}
 
     def node(state: ResearchState) -> dict:
@@ -214,14 +238,8 @@ def _make_specialist(name: str, focus: str, role: str):
 
 
 # Concrete specialist nodes
-fundamentals_node = _make_specialist(*SPECIALISTS[0])
-news_sentiment_node = _make_specialist(*SPECIALISTS[1])
-risk_node = _make_specialist(*SPECIALISTS[2])
-market_node = _make_specialist(*SPECIALISTS[3])
-
-SPECIALIST_NODES = {
-    "fundamentals": fundamentals_node,
-    "news_sentiment": news_sentiment_node,
-    "risk": risk_node,
-    "market": market_node,
-}
+SPECIALIST_NODES = {name: _make_specialist(name) for name, _, _ in SPECIALISTS}
+fundamentals_node = SPECIALIST_NODES["fundamentals"]
+news_sentiment_node = SPECIALIST_NODES["news_sentiment"]
+risk_node = SPECIALIST_NODES["risk"]
+market_node = SPECIALIST_NODES["market"]

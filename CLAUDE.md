@@ -25,8 +25,13 @@ Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-ch
   Agentic Hybrid RAG:
     BM25Retriever + bge (EnsembleRetriever/RRF) → CrossEncoderReranker → CRAG self-correct → Qdrant/InMemory
   Tools:  web_search (Tavily) · sec_edgar · stock_data (stooq) · company_news
-  LLM Ops (self-improving):
-    Langfuse trace + auto/Ragas eval → gate → diagnose → rewrite prompt → re-eval → release (prompt registry)
+  Human review: approve · revise (feedback, optionally aimed at one report section) · reject (never remembered)
+  LLM Ops (self-improving learning loop):
+    every run → eval + review outcome → run record
+    diagnose (attribute failures to ONE component; human feedback weighted highest)
+      → propose ONE bounded policy change (lesson · exemplars · retrieval depth)
+      → paired replay vs the active policy on the SAME inputs, several companies
+      → release only on a real mean gain with no regression · auto-rollback on live regression
     + per-agent eval (groundedness/richness per specialist) → attributes a weak run to one agent
   Ingestion (separate from the run — agents read the index, never fill it):
     upload file / paste text / SEC ticker  →  /corpus/*  →  chunk → embed → Qdrant
@@ -43,7 +48,7 @@ Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-ch
 | Tools | **MCP** server exposing web_search / sec_edgar / stock_data / company_news |
 | Memory | **Episodic** (SQLite + embeddings) · **Procedural** (playbook files) · **Summarizer** agent (cheaper model) |
 | Backend | **FastAPI** + SSE streaming |
-| Observability | **Langfuse** (trace/eval/cost) + **Ragas** + a self-improving **LLM-Ops** loop (prompt registry) |
+| Observability | **Langfuse** (trace/eval/cost) + **Ragas** + a self-improving **learning loop** (versioned agent policies) |
 | Frontend | **Next.js + Tailwind** (hand-rolled war-room components) |
 | Infra | **Docker Compose** (qdrant + langfuse + api + web) |
 
@@ -68,7 +73,7 @@ apps/
         agents/        # base, specialists (4), debate (bull/bear/judge), synthesizer
         rag/           # chunking, embeddings, index (LangChain hybrid), crag, ingest, loaders
         memory/        # episodic (SQLite+vectors), procedural (playbooks), summarizer
-        llmops/        # registry, evaluate, agent_eval (per-specialist), gate, optimizer
+        llmops/        # evaluate, agent_eval, gate · records, policy, diagnose, proposer, replay, improver
         tools/         # web_search (Tavily), sec, market (stock + news)
       eval/            # golden set, retrieval_eval, ragas_eval, langfuse_scores
     tests/             # offline suite (ATLAS_OFFLINE_LLM / ATLAS_OFFLINE_EMBED)
@@ -117,7 +122,7 @@ cd apps/api && pip install -e ".[dev]" && uvicorn atlas.main:app --reload
 - **M4** Debate & synthesis — Bull/Bear/Judge, cited report + confidence + grounding guardrail ✅
 - **M5** War-room frontend — Next.js live agent graph, streaming debate, report view ✅
 - **M6** Memory layers — episodic (SQLite + vectors), procedural (playbooks), summarizer agent ✅
-- **M7** LLM Ops — auto eval → gate → self-improvement (rewrite prompt) → release (versioned prompt registry) ✅
+- **M7** LLM Ops — auto eval → run records → diagnose → policy change → paired replay → release / auto-rollback ✅
 
 ## Working with this repo (subagents & skills)
 

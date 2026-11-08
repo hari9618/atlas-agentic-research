@@ -181,3 +181,60 @@ def test_stream_failure_becomes_a_friendly_error_event(llm_configured, monkeypat
     evs = _events(r)
     assert evs[-1][0] == "error" and evs[-1][1]["code"] == "run_failed"
     assert "internal detail" not in evs[-1][1]["error"]
+
+
+def test_reject_ends_the_run_without_remembering_it(llm_configured):
+    tid = _tid()
+    assert _events(_get("/research/stream", q="Assess Helios Robotics", thread_id=tid,
+                        review=1))[-1][0] == "review_required"
+    evs = _events(_get("/research/resume", thread_id=tid, action="reject",
+                       feedback="Numbers look unreliable", section="financials"))
+    names = [e for e, _ in evs]
+    assert names[-1] == "final"
+    assert "remember" not in names  # a rejected report never becomes episodic memory
+    final = evs[-1][1]
+    assert final["review_status"] == "rejected"
+    assert final["review_history"] == [{"revision": 0, "action": "reject",
+                                        "feedback": "Numbers look unreliable",
+                                        "section": "financials"}]
+
+
+def test_section_targeted_revision_reaches_the_writer(llm_configured):
+    tid = _tid()
+    _events(_get("/research/stream", q="Assess Helios Robotics", thread_id=tid, review=1))
+    evs = _events(_get("/research/resume", thread_id=tid, action="revise",
+                       feedback="Name the main rivals", section="competitors"))
+    draft = evs[-1][1]
+    assert evs[-1][0] == "review_required" and draft["revision"] == 1
+    assert draft["review_history"][-1] == {"revision": 0, "action": "revise",
+                                           "feedback": "Name the main rivals",
+                                           "section": "competitors"}
+
+
+def test_unknown_review_section_is_rejected_in_band():
+    r = _get("/research/resume", thread_id="x", action="revise", feedback="more",
+             section="not_a_section")
+    assert _single_error(r)["code"] == "bad_request"
+
+
+def test_finished_runs_are_recorded_for_the_learning_loop(llm_configured):
+    from atlas.core.llmops.records import get_records
+
+    tid = _tid()
+    _events(_get("/research/stream", q="Assess Helios Robotics", thread_id=tid, review=1))
+    _events(_get("/research/resume", thread_id=tid, action="revise", feedback="More on debt",
+                 section="risks"))
+    _events(_get("/research/resume", thread_id=tid, action="approve"))
+    record = next(r for r in get_records().recent(50) if r["thread_id"] == tid)
+    assert record["review"]["outcome"] == "revised"
+    assert record["review"]["history"][0]["section"] == "risks"
+    assert set(record["policy_versions"]) == {"fundamentals", "news_sentiment", "risk",
+                                              "market", "synthesizer"}
+    assert record["findings"]  # kept for replaying the synthesizer
+
+
+def test_streamed_events_omit_server_only_evidence(llm_configured):
+    r = _get("/research/stream", q="Assess Helios Robotics", thread_id=_tid(), review=1)
+    for _, data in _events(r):
+        for f in data.get("findings") or []:
+            assert "evidence_text" not in f and "evidence_id" not in f

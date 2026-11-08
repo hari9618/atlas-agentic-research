@@ -106,7 +106,7 @@ def test_uploaded_document_becomes_retrievable():
         "/corpus/text",
         json={"title": "Zephyr Dynamics Filing", "text": LONG_TEXT.replace("Northwind", "Zephyr")},
     )
-    from atlas.core.graph import get_index
+    from atlas.core.resources import get_index
 
     hits = get_index().retrieve("Zephyr Dynamics revenue", top_k=3)
     assert any("Zephyr" in h.chunk.text for h in hits)

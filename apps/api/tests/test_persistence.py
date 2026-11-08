@@ -6,18 +6,19 @@ import pytest
 
 from atlas.config import get_settings
 from atlas.core import persistence
-from atlas.core.llmops.registry import PromptRegistry
+from atlas.core.llmops.store import DocumentStore
 from atlas.core.memory.episodic import EpisodicMemory
 
 
 @pytest.fixture
 def isolated(tmp_path, monkeypatch):
     """Fresh settings + persistence singletons, with every default file under tmp_path."""
-    import atlas.core.llmops.registry as registry_mod
+    import atlas.core.llmops.store as store_mod
     import atlas.core.memory.episodic as episodic_mod
 
-    for mod in (persistence, episodic_mod, registry_mod):
+    for mod in (persistence, episodic_mod, store_mod):
         monkeypatch.setattr(mod, "cache_dir", lambda: tmp_path)
+    monkeypatch.delenv("ATLAS_LLMOPS_DIR", raising=False)
     get_settings.cache_clear()
     persistence.reset_persistence()
     yield monkeypatch
@@ -61,7 +62,7 @@ def test_no_database_url_means_sqlite(isolated):
     assert isinstance(saver, SqliteSaver)
     assert persistence.get_checkpointer() is saver  # process singleton
     assert EpisodicMemory(offline=True).backend == "sqlite"
-    assert PromptRegistry().backend == "json"
+    assert DocumentStore("policy").backend == "json"
 
 
 def test_unreachable_postgres_falls_back_to_sqlite(isolated, caplog):
@@ -82,7 +83,7 @@ def test_unreachable_postgres_falls_back_to_sqlite(isolated, caplog):
     assert mem.backend == "sqlite"
     mem.save("Analyze Helios", "r", 0.7, [])
     assert mem.count() == 1
-    assert PromptRegistry().backend == "json"
+    assert DocumentStore("policy").backend == "json"
 
 
 def test_explicit_paths_always_use_sqlite_and_json(isolated, tmp_path):
@@ -90,4 +91,4 @@ def test_explicit_paths_always_use_sqlite_and_json(isolated, tmp_path):
     isolated.setenv("DATABASE_URL", "postgresql://atlas:pw@127.0.0.1:1/atlas")
     get_settings.cache_clear()
     assert EpisodicMemory(db_path=tmp_path / "e.sqlite", offline=True).backend == "sqlite"
-    assert PromptRegistry(path=tmp_path / "r.json").backend == "json"
+    assert DocumentStore("policy", root=tmp_path).backend == "json"

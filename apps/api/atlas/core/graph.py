@@ -1,15 +1,18 @@
-"""The Atlas research graph (design §3).
+"""The Atlas research graph (design §3) and the run driver.
 
     recall → supervisor → [fundamentals ‖ news_sentiment ‖ risk ‖ market]
            → debate_round → synthesize → human_review
     human_review: approve / auto → remember → END
-    human_review: revise → revise_research → synthesize   (capped at max_revisions)
+    human_review: revise         → revise_research → synthesize   (capped at max_revisions)
+    human_review: reject         → END   (a rejected report never becomes memory)
 
 Compiled once with the configured checkpointer (Postgres or SQLite, see
-persistence.py) so a run paused for human review survives restarts and can be
-resumed. ``run_research`` / ``resume_research`` stream per-node updates for the UI
-and end with ``review_required`` (paused) or ``final``; ``research`` runs to
-completion with review off.
+persistence.py), so a run paused for human review survives restarts and can be
+resumed on any worker. ``run_research`` / ``resume_research`` stream per-node
+updates for the UI and end with ``review_required`` (paused) or ``final``.
+
+Every finished run is evaluated and recorded (``llmops.records``) together with the
+reviewer's decisions — the raw material of the learning loop (``llmops.improver``).
 """
 
 from __future__ import annotations
@@ -29,78 +32,16 @@ from .agents.review import (
     revise_research_node,
     route_after_review,
 )
-from .agents.specialists import (
-    fundamentals_node,
-    market_node,
-    news_sentiment_node,
-    plan_node,
-    risk_node,
-)
+from .agents.specialists import SPECIALIST_NODES, plan_node
 from .agents.synthesizer import synthesize_node
-from .memory.episodic import EpisodicMemory
-from .memory.summarizer import consolidate
+from .memory.nodes import recall_node, remember_node
 from .payload import research_payload
 from .persistence import get_checkpointer
-from .rag.index import HybridIndex
-from .rag.ingest import ingest_documents
-from .rag.loaders import load_corpus_dir
 from .state import ResearchState
 
 log = logging.getLogger("atlas.graph")
 
-_index: HybridIndex | None = None
 _graph = None
-_episodic: EpisodicMemory | None = None
-
-
-def get_episodic() -> EpisodicMemory:
-    """Build (once) and cache the episodic memory store."""
-    global _episodic
-    if _episodic is None:
-        _episodic = EpisodicMemory(offline=os.getenv("ATLAS_OFFLINE_EMBED") == "1")
-    return _episodic
-
-
-def recall_node(state: ResearchState) -> dict:
-    """Read episodic memory: pull relevant + recent past runs into working memory."""
-    mem = get_episodic()
-    query = state["query"]
-    ctx, seen = [], set()
-    for e in mem.relevant(query, limit=2) + mem.recent(limit=1):
-        if e.id in seen:
-            continue
-        seen.add(e.id)
-        ctx.append(e.summary())
-    if ctx:
-        log.info("Recalled %d prior episode(s) for this run", len(ctx))
-    return {"prior_context": ctx}
-
-
-def remember_node(state: ResearchState) -> dict:
-    """Write to episodic memory; periodically consolidate into semantic facts."""
-    mem = get_episodic()
-    mem.save(
-        query=state["query"],
-        report=state.get("report", ""),
-        confidence=state.get("confidence"),
-        findings=state.get("findings", []),
-        target=state.get("target", ""),
-    )
-    every = get_settings().memory_consolidate_every
-    if every and mem.count() % every == 0:
-        consolidate(mem, get_index())  # summarizer agent → semantic memory
-    return {}
-
-
-def get_index() -> HybridIndex:
-    """Build (once) and cache the hybrid index from the corpus."""
-    global _index
-    if _index is None:
-        offline = os.getenv("ATLAS_OFFLINE_EMBED") == "1"
-        docs = load_corpus_dir()
-        _index = ingest_documents(docs, offline=offline)
-        log.info("Built research index: %d docs, %d chunks", len(docs), len(_index.chunks))
-    return _index
 
 
 def build_graph():
@@ -108,28 +49,26 @@ def build_graph():
     # Node names must NOT collide with state keys (LangGraph rule) — hence
     # "supervisor" (state has `plan`) and "debate_round" (state has `debate`).
     g = StateGraph(ResearchState)
-    g.add_node("recall", recall_node)          # read episodic memory
+    g.add_node("recall", recall_node)
     g.add_node("supervisor", plan_node)
-    g.add_node("fundamentals", fundamentals_node)
-    g.add_node("news_sentiment", news_sentiment_node)
-    g.add_node("risk", risk_node)
-    g.add_node("market", market_node)
+    for name, node in SPECIALIST_NODES.items():
+        g.add_node(name, node)
     g.add_node("debate_round", debate_node)
     g.add_node("synthesize", synthesize_node)
-    g.add_node("human_review", human_review_node)        # interrupt() for approval
+    g.add_node("human_review", human_review_node)        # interrupt() for a decision
     g.add_node("revise_research", revise_research_node)  # feedback-driven research
-    g.add_node("remember", remember_node)      # write episodic memory (+ consolidate)
+    g.add_node("remember", remember_node)
 
     g.add_edge(START, "recall")
     g.add_edge("recall", "supervisor")
-    for s in ("fundamentals", "news_sentiment", "risk", "market"):
-        g.add_edge("supervisor", s)     # fan-out: specialists run in parallel
-        g.add_edge(s, "debate_round")   # fan-in: debate waits for all specialists
+    for name in SPECIALIST_NODES:
+        g.add_edge("supervisor", name)      # fan-out: specialists run in parallel
+        g.add_edge(name, "debate_round")    # fan-in: debate waits for all of them
     g.add_edge("debate_round", "synthesize")
     g.add_edge("synthesize", "human_review")
     g.add_conditional_edges(
         "human_review", route_after_review,
-        {"revise_research": "revise_research", "remember": "remember"},
+        {"revise_research": "revise_research", "remember": "remember", "end": END},
     )
     g.add_edge("revise_research", "synthesize")
     g.add_edge("remember", END)
@@ -143,34 +82,27 @@ def get_graph():
     return _graph
 
 
+def reset_graph() -> None:
+    """Recompile on next use (tests, or after the checkpointer changes)."""
+    global _graph
+    _graph = None
+
+
 class RunNotPausedError(LookupError):
     """Resume was requested for a thread that is not waiting for review."""
 
 
-def _run_config(thread_id: str, query: str, *, resume: bool = False,
-                prompt_override: str | None = None) -> dict:
-    """Per-run config.
-
-    The Langfuse handler is attached at the *graph* level so the whole run is ONE
-    trace tree (named "atlas_research_run") with every agent/tool call nested
-    underneath — token usage, cost and latency roll up per run. The ``langfuse_*``
-    metadata keys group the start and every resume of a thread into one session
-    (session id = thread id) and tag them so they're easy to find on the dashboard.
-    """
+def _run_config(thread_id: str, query: str, *, resume: bool = False) -> dict:
+    """Per-run config: one Langfuse trace tree per run, grouped by thread (session)."""
     from ..observability import langchain_callbacks  # lazy: keeps import graph clean
 
-    tags = ["atlas", "research_run"] + (["resume"] if resume else [])
-    configurable: dict = {"thread_id": thread_id}
-    if prompt_override:  # an LLM-Ops trial run (see synthesizer._prompt_override)
-        configurable["synthesizer_system_override"] = prompt_override
-        tags.append("llmops_trial")
     return {
-        "configurable": configurable,
+        "configurable": {"thread_id": thread_id},
         "callbacks": langchain_callbacks(),
         "run_name": "atlas_research_run",
         "metadata": {
             "langfuse_session_id": thread_id,
-            "langfuse_tags": tags,
+            "langfuse_tags": ["atlas", "research_run"] + (["resume"] if resume else []),
             "atlas_query": query,
         },
     }
@@ -179,10 +111,9 @@ def _run_config(thread_id: str, query: str, *, resume: bool = False,
 def _pending_interrupt(snapshot) -> dict | None:
     """The interrupt payload if the graph is paused at human_review, else None.
 
-    In langgraph 0.2.76 a paused run surfaces as an ``__interrupt__`` entry in the
-    "updates" stream and, durably, as ``snapshot.next == ("human_review",)`` with
-    the ``Interrupt`` objects on ``snapshot.tasks[i].interrupts``. The checkpoint is
-    the source of truth (it also works for a resume on another worker).
+    The checkpoint is the source of truth (it also works for a resume on another
+    worker): a paused run has ``snapshot.next`` set and the ``Interrupt`` objects on
+    its tasks.
     """
     if not snapshot.next:
         return None
@@ -193,60 +124,76 @@ def _pending_interrupt(snapshot) -> dict | None:
     return None
 
 
-def _drive(graph, inp, config: dict, thread_id: str, *, score: bool = True) -> Iterator[dict]:
+def _drive(graph, inp, config: dict, thread_id: str, *, record: bool = True) -> Iterator[dict]:
     """Stream node updates, then emit ``review_required`` (paused) or ``final``."""
     for chunk in graph.stream(inp, config=config, stream_mode="updates"):
         for node, update in chunk.items():
-            if node == "__interrupt__":  # surfaced below from the checkpoint
-                continue
-            yield {"event": node, "data": update or {}}
+            if node != "__interrupt__":  # surfaced below from the checkpoint
+                yield {"event": node, "data": update or {}}
 
     snapshot = graph.get_state(config)
     values = snapshot.values
+    revision = values.get("revision", 0) or 0
     pending = _pending_interrupt(snapshot)
     if pending is not None:
-        payload = {**research_payload(values), **pending}
-        payload.update(thread_id=thread_id, revision=values.get("revision", 0) or 0,
-                       review_status="pending")
+        payload = {**research_payload(values), **pending,
+                   "thread_id": thread_id, "revision": revision, "review_status": "pending"}
         yield {"event": "review_required", "data": payload}
         return
     if snapshot.next:  # paused somewhere other than review — should not happen
         raise RuntimeError(f"run stopped unexpectedly before {snapshot.next}")
 
-    result = research_payload(values)
-    result.update(thread_id=thread_id, revision=values.get("revision", 0) or 0,
-                  review_status=values.get("review_status") or "auto_approved")
+    result = {**research_payload(values), "thread_id": thread_id, "revision": revision,
+              "review_status": values.get("review_status") or "auto_approved"}
     yield {"event": "final", "data": result}
-    # After the report has streamed to the user, auto-evaluate the run and push the
-    # scores to Langfuse — once, for the approved final report only. Best-effort: a
-    # scoring hiccup must never fail the research run.
-    if score:
-        _score_run(values.get("query", ""), result)
+    # After the report reached the user: evaluate and record the run. Best-effort —
+    # learning bookkeeping must never fail a research run.
+    if record:
+        _record_run(values, thread_id, result)
+
+
+def _record_run(values: dict, thread_id: str, result: dict) -> None:
+    from .llmops.improver import check_regressions
+    from .llmops.policy import get_policies
+    from .llmops.records import build_record, get_records
+
+    try:
+        scores = None
+        live = get_settings().llm_configured and os.getenv("ATLAS_OFFLINE_LLM") != "1"
+        if live and result.get("report"):
+            from .llmops.evaluate import evaluate_run
+
+            scores = evaluate_run(values.get("query", ""), result, push=True)
+            log.info("run %s scored: overall=%.3f (%s)", thread_id, scores["overall"],
+                     scores["quality"])
+        get_records().save(build_record(values, thread_id=thread_id, scores=scores,
+                                        policy_versions=get_policies().snapshot()))
+        check_regressions()
+    except Exception as exc:  # pragma: no cover - bookkeeping is best-effort
+        log.warning("recording run %s failed (non-fatal): %s", thread_id, exc)
 
 
 def run_research(query: str, *, thread_id: str = "default", require_review: bool = False,
-                 prompt_override: str | None = None, score: bool = True) -> Iterator[dict]:
+                 record: bool = True) -> Iterator[dict]:
     """Start a run. Yields ``start``, one event per node update, then
     ``review_required`` (paused for a human) or ``final``."""
     graph = get_graph()
-    config = _run_config(thread_id, query, prompt_override=prompt_override)
-    # Fresh run inputs. ``None`` clears the additive lists (findings/debate/history)
-    # left by an earlier run on a reused thread id, and the review scalars are reset
-    # so a new run never inherits a previous run's revision count or feedback.
+    config = _run_config(thread_id, query)
+    # Fresh inputs. ``None`` clears the additive lists (findings/debate/history) a
+    # previous run on a reused thread id left behind; review scalars are reset too.
     inp = {
         "query": query, "require_review": require_review,
         "findings": None, "debate": None, "review_history": None,
-        "revision": 0, "feedback": "", "review_status": "pending",
+        "revision": 0, "feedback": "", "feedback_section": "", "review_status": "pending",
         "report": "", "report_sections": None, "uncertainties": [], "citations": [],
         "target": "", "ticker": "",
     }
     yield {"event": "start", "data": {"query": query, "thread_id": thread_id}}
-    yield from _drive(graph, inp, config, thread_id, score=score)
+    yield from _drive(graph, inp, config, thread_id, record=record)
 
 
 def thread_status(thread_id: str) -> str:
-    """``paused`` (waiting at human_review), ``finished`` (has state, not waiting) or
-    ``unknown`` (no checkpoint for this thread id)."""
+    """``paused`` (waiting at human_review), ``finished`` or ``unknown`` (no checkpoint)."""
     snapshot = get_graph().get_state({"configurable": {"thread_id": thread_id}})
     if _pending_interrupt(snapshot) is not None:
         return "paused"
@@ -254,19 +201,19 @@ def thread_status(thread_id: str) -> str:
 
 
 def is_paused(thread_id: str) -> bool:
-    """True when ``thread_id`` is waiting at human_review for a decision."""
     return thread_status(thread_id) == "paused"
 
 
 def resume_research(thread_id: str, decision: dict) -> Iterator[dict]:
-    """Resume a paused run with ``{"action": "approve"}`` or
-    ``{"action": "revise", "feedback": "..."}``; same events as ``run_research``.
+    """Resume a paused run with ``{"action": "approve" | "revise" | "reject",
+    "feedback": str, "section": str}``; same events as ``run_research``.
 
     Raises ``ValueError`` for an invalid decision and ``RunNotPausedError`` if the
     thread isn't waiting for review — both eagerly, before anything is streamed.
     """
     action = str((decision or {}).get("action", "")).strip().lower()
     feedback = str((decision or {}).get("feedback") or "").strip()
+    section = str((decision or {}).get("section") or "").strip()
     if action not in ACTIONS:
         raise ValueError(f"action must be one of {ACTIONS}")
     if action == "revise" and not feedback:
@@ -278,7 +225,7 @@ def resume_research(thread_id: str, decision: dict) -> Iterator[dict]:
         raise RunNotPausedError(f"thread {thread_id!r} is not waiting for review")
     query = snapshot.values.get("query", "")
     config = _run_config(thread_id, query, resume=True)
-    command = Command(resume={"action": action, "feedback": feedback})
+    command = Command(resume={"action": action, "feedback": feedback, "section": section})
 
     def _events() -> Iterator[dict]:
         yield {"event": "start", "data": {"query": query, "thread_id": thread_id,
@@ -288,36 +235,13 @@ def resume_research(thread_id: str, decision: dict) -> Iterator[dict]:
     return _events()
 
 
-def _score_run(query: str, result: dict) -> None:
-    """Per-run automatic eval → push scores to Langfuse. Never raises."""
-    if not (result.get("report") and get_settings().llm_configured):
-        return
-    if os.getenv("ATLAS_OFFLINE_LLM") == "1":
-        return  # offline/test runs produce stub reports; never score or push them
-    try:
-        from .llmops.evaluate import evaluate_run
-
-        scores = evaluate_run(query, result, push=True)
-        log.info(
-            "Run scored → faithfulness=%.3f relevancy=%.3f (pushed to Langfuse)",
-            scores.get("faithfulness", 0.0),
-            scores.get("relevancy", 0.0),
-        )
-    except Exception as exc:  # pragma: no cover - scoring is best-effort
-        log.warning("Per-run scoring/push failed (non-fatal): %s", exc)
-
-
-def research(query: str, *, thread_id: str = "default", prompt_override: str | None = None,
-             score: bool = True) -> dict:
+def research(query: str, *, thread_id: str = "default", record: bool = True) -> dict:
     """Run to completion with review off and return the final payload (non-streaming).
 
-    Used by ``/research/sync``, the LLM-Ops optimizer and the eval harness. The
-    optimizer passes ``prompt_override`` (a candidate prompt for this run only) and
-    ``score=False`` (it evaluates the run itself, so it must not be scored twice).
+    Used by ``/research/sync`` and the eval harness.
     """
     result = None
-    for ev in run_research(query, thread_id=thread_id, require_review=False,
-                           prompt_override=prompt_override, score=score):
+    for ev in run_research(query, thread_id=thread_id, require_review=False, record=record):
         if ev["event"] == "final":
             result = ev["data"]
     return result or {}

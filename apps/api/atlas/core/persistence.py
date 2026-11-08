@@ -1,6 +1,6 @@
 """Persistence factory — where Atlas keeps durable state.
 
-One place decides the storage backend so the graph, memory and registry never
+One place decides the storage backend so the graph, memory and learning loop never
 hard-code it:
 
 * ``DATABASE_URL`` set  → Postgres (durable across deploys, safe for many workers).
