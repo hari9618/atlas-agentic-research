@@ -67,6 +67,15 @@ def _sse_events(r) -> list[str]:
 
 
 # ---------------------------------------------------------------- accounts
+@pytest.fixture(autouse=True)
+def _llm_key(monkeypatch):
+    """The research router refuses to run without an LLM key, and the suite sets none
+    (as on CI). Pretend one is configured; ATLAS_OFFLINE_LLM keeps the LLM a stub."""
+    from atlas.config import Settings
+
+    monkeypatch.setattr(Settings, "llm_configured", property(lambda self: True))
+
+
 def test_register_login_and_me():
     email = _email()
     reg = _register(email)

@@ -20,6 +20,12 @@ os.environ.setdefault("LANGFUSE_SECRET_KEY", "")
 # DATABASE_URL (an env var beats .env in pydantic-settings). Postgres integration
 # tests opt in explicitly via ATLAS_TEST_DATABASE_URL (tests/test_persistence_pg.py).
 os.environ["DATABASE_URL"] = ""
+# Provider keys too. A developer's .env holds real keys, which once made 5 tests pass
+# locally and fail on CI (which has none): the research router refuses to run without
+# a key. Blanking them here makes local runs behave exactly like CI; tests that need
+# the "key configured" path patch it explicitly (the LLM itself stays offline).
+os.environ["GROQ_API_KEY"] = ""
+os.environ["TAVILY_API_KEY"] = ""
 # The learning loop's records/policies/experiments go to a throwaway directory, so
 # test runs never pollute the real data/cache/llmops history.
 os.environ["ATLAS_LLMOPS_DIR"] = tempfile.mkdtemp(prefix="atlas-llmops-")
