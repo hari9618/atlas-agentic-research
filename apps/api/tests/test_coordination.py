@@ -32,6 +32,27 @@ def _backends():
                        marks=pytest.mark.skipif(not PG_URL, reason="ATLAS_TEST_DATABASE_URL unset"))
     yield pytest.param(lambda: RedisBackend.from_url(REDIS_URL), id="redis",
                        marks=pytest.mark.skipif(not REDIS_URL, reason="ATLAS_TEST_REDIS_URL unset"))
+    # The same Lua script on an emulator, so it is exercised everywhere. Lua's 14-digit
+    # number formatting once rounded stored timestamps and refused a burst's last
+    # request; only running the script itself catches that class of bug.
+    yield pytest.param(_fake_redis, id="fakeredis",
+                       marks=pytest.mark.skipif(not _has_fakeredis(),
+                                                reason="fakeredis not installed"))
+
+
+def _has_fakeredis() -> bool:
+    try:
+        import fakeredis  # noqa: F401
+        import lupa  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _fake_redis():
+    import fakeredis
+
+    return RedisBackend(fakeredis.FakeRedis(decode_responses=True))
 
 
 def _pg():
@@ -126,3 +147,16 @@ def test_coordinator_fails_open_when_the_store_is_down():
     assert c.hit("k", Rule("r", 1, 60)).allowed
     assert c.acquire("k", "o", 10)
     c.release("k", "o")  # must not raise
+
+
+@pytest.mark.parametrize("make", _backends())
+def test_rate_limit_counts_down_exactly_over_many_buckets(make):
+    """Regression: remaining must count 4,3,2,1,0 and the 5th request must pass —
+    every time, not just when floating-point rounding happens to fall the right way."""
+    backend = make()
+    for _ in range(50):
+        rule = Rule(f"r{uuid.uuid4().hex[:6]}", 5, 60.0)
+        decisions = [backend.hit("k", rule) for _ in range(6)]
+        assert [d.remaining for d in decisions[:5]] == [4, 3, 2, 1, 0]
+        assert [d.allowed for d in decisions] == [True] * 5 + [False]
+

@@ -64,6 +64,9 @@ dev = [
     # Pinned so CI lints with the same ruff as local — an unpinned ruff drifts to a
     # newer default rule set and fails a build that passed the day before.
     "ruff==0.16.0",
+    # Redis emulator with real Lua: the rate-limit script runs in every test run,
+    # not only where a Redis server exists (CI also tests the real one).
+    "fakeredis[lua]>=2.26",
 ]
 eval = [
     "ragas>=0.2",

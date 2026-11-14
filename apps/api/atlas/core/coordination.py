@@ -113,9 +113,14 @@ class MemoryBackend:
 
 
 # ------------------------------------------------------------------ redis
+# All arithmetic in integer MICROSECONDS. Redis Lua formats numbers with 14
+# significant digits, so a seconds timestamp (1.7e9 + fraction) stored via tostring()
+# was rounded to 0.1 ms: CI caught a burst's last request being refused by a 34 us
+# rounding error. Microsecond integers (~1.7e15 < 2^53) are exact in a double, and
+# string.format('%.0f') stores them without loss.
 _GCRA_LUA = """
 local t = redis.call('TIME')
-local now = tonumber(t[1]) + tonumber(t[2]) / 1000000
+local now = tonumber(t[1]) * 1000000 + tonumber(t[2])
 local interval = tonumber(ARGV[1])
 local period = tonumber(ARGV[2])
 local tat = tonumber(redis.call('GET', KEYS[1]) or now)
@@ -123,10 +128,11 @@ if tat < now then tat = now end
 local new_tat = tat + interval
 local allow_at = new_tat - period
 if now < allow_at then
-  return {0, tostring(allow_at - now), '0'}
+  return {0, string.format('%.0f', allow_at - now), '0'}
 end
-redis.call('SET', KEYS[1], tostring(new_tat), 'PX', math.ceil((new_tat - now) * 1000))
-return {1, '0', tostring(math.floor((period - (new_tat - now)) / interval))}
+redis.call('SET', KEYS[1], string.format('%.0f', new_tat), 'PX',
+           math.ceil((new_tat - now) / 1000))
+return {1, '0', string.format('%.0f', math.floor((period - (new_tat - now)) / interval))}
 """
 
 _RELEASE_LUA = """
@@ -153,9 +159,10 @@ class RedisBackend:
         return cls(client)
 
     def hit(self, key: str, rule: Rule) -> Decision:
-        ok, retry, remaining = self._gcra(keys=[f"atlas:rl:{rule.name}:{key}"],
-                                          args=[rule.interval, rule.period_s])
-        return Decision(bool(int(ok)), int(float(remaining)), float(retry), rule.limit)
+        ok, retry_us, remaining = self._gcra(
+            keys=[f"atlas:rl:{rule.name}:{key}"],
+            args=[round(rule.interval * 1_000_000), round(rule.period_s * 1_000_000)])
+        return Decision(bool(int(ok)), int(remaining), int(retry_us) / 1_000_000, rule.limit)
 
     def acquire(self, key: str, owner: str, ttl_s: float) -> bool:
         return bool(self.r.set(f"atlas:lease:{key}", owner, nx=True,
