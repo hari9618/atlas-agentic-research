@@ -15,8 +15,8 @@ observability, and a self-improving LLM-Ops loop. **Status: complete (M0–M7), 
 ## Architecture (one screen)
 
 ```
-Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-checkpointed state)
-   recall(memory) → SUPERVISOR → [Fundamentals · News/Sentiment · Risk · Market] (parallel)
+Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (Postgres/SQLite-checkpointed state)
+   SUPERVISOR (brief) → recall(memory: same user + same subject) → [Fundamentals · News/Sentiment · Risk · Market] (parallel)
                      → BULL ⇄ BEAR debate → SYNTHESIZER + JUDGE → remember(memory) → cited report + confidence
 
   Memory layers:
@@ -25,7 +25,19 @@ Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-ch
   Agentic Hybrid RAG:
     BM25Retriever + bge (EnsembleRetriever/RRF) → CrossEncoderReranker → CRAG self-correct → Qdrant/InMemory
   Tools:  web_search (Tavily) · sec_edgar · stock_data (stooq) · company_news
+  Research brief (agents/brief.py): subject · asker ("my company is…") · persona (investor | competitor |
+    buyer | partner | job_seeker) · goal · extra asks — model-drafted, rule-verified (never research the asker)
+  Small/private companies (rag/company_evidence.py): own website (SSRF-safe reader, tools/website.py) ·
+    reviews (G2/Capterra/Trustpilot/Reddit) · LinkedIn & funding via search · alternatives pages · asker's site
+    → persona report: verdict · snapshot · strengths · weaknesses · pricing · praise/complaints · head-to-head
+  Agentic eval (evals/agentic, DeepEval): live persona scenarios, deterministic + judged checks
   Human review: approve · revise (feedback, optionally aimed at one report section) · reject (never remembered)
+  Security (docs/security.md): Argon2id accounts + guest demo · 15-min JWT + rotating refresh tokens
+    (reuse detection) held by a Next.js BFF httpOnly cookie · RBAC (guest/user/admin) · user-scoped runs ·
+    AES-256-GCM encryption at rest (users, checkpoints, records, memories; key rotation, boot key check) ·
+    TLS to Postgres · GCRA rate limits + run admission on Redis/Postgres · audit log
+  Scale-out: stateless API behind nginx (least_conn, SSE-safe) · per-provider circuit breaker /
+    bulkhead / cache / single-flight / Retry-After retries · LLM bulkhead
   LLM Ops (self-improving learning loop):
     every run → eval + review outcome → run record
     diagnose (attribute failures to ONE component; human feedback weighted highest)
@@ -65,7 +77,9 @@ apps/
       llm.py           # shared ChatGroq factory (temperature/model overrides)
       observability.py # Langfuse callback handler (None when unconfigured)
       paths.py         # repo-root-anchored data/cache paths
-      routers/         # FastAPI routers: health, research (SSE), corpus (ingest), llmops
+      routers/         # FastAPI routers: health, auth, admin, research (SSE), corpus (ingest), llmops
+      security/        # passwords, tokens, auth store, crypto (encryption at rest), limits, audit
+      middleware.py    # request id, per-IP limit, security headers (pure ASGI)
       core/
         graph.py       # LangGraph wiring: recall → supervisor → specialists → debate → synthesize → remember
         state.py       # shared "research scratchpad" state

@@ -2,7 +2,7 @@
 
 # 🛰️ Atlas — Autonomous Due-Diligence Desk
 
-**A team of specialist AI agents that research a company, _debate each other (bull vs. bear)_, ground every claim in retrieved evidence, and deliver an investor-grade report — with citations, a confidence score, and an honest "what we're NOT sure about" section.**
+**Due diligence on the companies chat assistants know nothing about — small, private and mid-sized. A team of specialist AI agents reads the company's own website, reviews, LinkedIn and funding signals, _debates bull vs. bear_, and answers _your_ question (investor, competitor, buyer, partner, job seeker) with every claim linked to its source.**
 
 [![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-atlas--web--lake.vercel.app-000000?logo=vercel&logoColor=white)](https://atlas-web-lake.vercel.app)
 [![CI](https://github.com/hari9618/atlas-agentic-research/actions/workflows/ci.yml/badge.svg)](https://github.com/hari9618/atlas-agentic-research/actions/workflows/ci.yml)
@@ -17,7 +17,7 @@
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Tests](https://img.shields.io/badge/tests-offline_%26_hermetic-brightgreen)](#-testing)
 
-_Real multi-agent orchestration · agentic hybrid RAG · MCP tools · end-to-end observability · a self-improving LLM-Ops loop._
+_Multi-agent orchestration · agentic hybrid RAG · private-company research · production auth & encryption · statistically gated self-improvement · live agentic evals._
 
 </div>
 
@@ -27,67 +27,94 @@ _Real multi-agent orchestration · agentic hybrid RAG · MCP tools · end-to-end
 
 **[atlas-web-lake.vercel.app](https://atlas-web-lake.vercel.app)** — the full war-room UI, live.
 
-> Try: _"What are the main risks for Helios Robotics?"_ (sample data is pre-loaded), or clear the
-> knowledge base and upload your own PDFs. The first request may take **~50 s** while the free-tier
-> backend wakes from sleep. The public demo runs a lightweight retrieval profile to fit free
-> infrastructure — the full neural pipeline runs locally (see [Deployment](docs/architecture.md#deployment)).
+> Try: _"My company is caughtleads.com. Should I worry about revsquad.ai?"_ or
+> _"Should we buy from gong.io? What does it cost for 20 reps?"_ — click **Try the demo** for a
+> no-signup guest session (3 runs/hour). The first request may take **~50 s** while the free-tier
+> backend wakes up. The public demo runs a lightweight retrieval profile to fit free
+> infrastructure (see [Deployment](docs/deployment.md)).
 
 ---
 
 ## 🎯 What it does
 
-Ask Atlas a question like _"Should I worry about Company X as a competitor?"_ and instead of a single, unverifiable LLM answer, Atlas runs a **whole desk of AI analysts**:
+Chat assistants already summarize NVIDIA. The questions people actually need answered are about
+companies with **no stock, no filings and no press** — a new competitor, a vendor you're about to
+sign, a startup you might invest in or join. Ask Atlas:
 
-1. A **supervisor** dispatches four specialists — **Fundamentals · News/Sentiment · Risk · Market** — that research **in parallel**.
-2. Their findings go into a **Bull ⇄ Bear debate**, where one agent argues the upside and one argues the downside.
-3. A **Synthesizer + Judge** merges both sides into a **cited report** with a **confidence score** and an explicit list of what the system is _not_ sure about.
-4. A **grounding guardrail** rejects any claim that isn't backed by retrieved evidence — so the report can't hallucinate silently.
+> _"My company is caughtleads.com. Should I worry about revsquad.ai?"_
+
+1. A **supervisor** writes a research brief: the **subject** (RevSquad), the **asker** (CaughtLeads),
+   the **persona** (competitor), the **goal** and any **extra asks** — model-drafted, then verified
+   by rules so Atlas never researches the asker by mistake.
+2. Four **specialists** research in parallel from the company's **own website** (SSRF-safe reader),
+   **reviews** (G2, Capterra, Trustpilot, Reddit), **employee reviews**, **LinkedIn & funding** via
+   search, **"alternatives to" pages** and **your own site** — plus SEC filings, stock data and news
+   when the company is public.
+3. A **Bull ⇄ Bear debate** argues both sides; a **Synthesizer + Judge** writes a report shaped for
+   the reader: **verdict · snapshot · strengths · weaknesses & red flags · pricing · customer praise
+   & complaints · them-vs-you table · answers to your extra questions** — with a confidence score
+   and an explicit "what we're not sure about".
+4. You **approve, request changes, or reject**. That review feeds the learning loop.
+
+Live answer to the question above: _"Low threat — monitor. RevSquad sells AI sales coaching to B2B
+sales teams; CaughtLeads captures inbound calls for consumer-facing businesses"_ — with RevSquad's
+real per-rep pricing and four sourced weaknesses (screenshots below).
 
 ## ✨ Why this project stands out
 
 | | |
 |---|---|
-| 🧠 **True multi-agent orchestration** | Not a prompt chain — a real **LangGraph** graph with a supervisor, parallel specialists, a debate loop, and shared **SQLite-checkpointed** state that can resume after a crash. |
-| 🔍 **Agentic hybrid RAG** | **BM25 + bge dense** embeddings fused with **RRF**, a **cross-encoder re-ranker**, and a **CRAG** self-correction loop that re-searches when evidence is weak. |
-| 🌐 **Hybrid evidence** | CRAG's three-way grade decides the source: curated documents when they answer, **documents + live web combined** when partial, web alone when they don't. Web hits become the same citable chunk type, so provenance works identically either way. |
-| 🛠️ **MCP tool server** | Agents pull live evidence via **web search (Tavily) · SEC EDGAR · stock data · company news** — each tool degrades gracefully on failure. |
-| 🗂️ **Four memory layers** | **Working** (graph state) · **Semantic** (RAG) · **Episodic** (SQLite + vectors of past runs) · **Procedural** (playbooks) — plus a **Summarizer agent** that distills old runs into durable facts. |
-| 📈 **Self-improving LLM-Ops** | Every run is auto-evaluated with **Ragas** → gated → weak prompts are **diagnosed, rewritten, re-evaluated, and released** through a versioned prompt registry. |
-| 🎯 **Per-agent evaluation** | Each specialist is scored **individually** (groundedness + richness) and charted in Langfuse — so a weak run is attributed to a *specific* agent, not just the final report. |
-| 📥 **Teachable at runtime** | Upload a **PDF / Word / text** document, paste text, or pull a **real SEC filing by ticker** from the UI — it's parsed, chunked, embedded, and searchable by the very next run. Ingestion is idempotent. |
-| 📄 **Export the brief** | One click renders the run as a clean, paper-formatted **PDF** — verdict, findings with sources, debate, and known unknowns. |
-| 👁️ **Observability-first** | Every agent node and tool call is traced in **Langfuse** with token + cost; Ragas scores pushed as dashboards. |
-| 🧪 **Fully offline test suite** | CI-friendly, hermetic tests run with zero API keys or network — stub LLM + hashing embedder. |
-| 💸 **$0 to run** | Groq free tier + local embeddings + self-hosted Qdrant & Langfuse. Clone and run for nothing. |
+| 🧠 **True multi-agent orchestration** | A real **LangGraph** graph: supervisor → memory recall → four parallel specialists → bull/bear debate → synthesizer/judge → human review, with **Postgres-checkpointed**, encrypted state that survives restarts. |
+| 🕵️ **Built for private companies** | Persona-aware research brief, safe website crawler (public IPs only, robots.txt, hidden-text stripping), review/LinkedIn/funding/alternatives evidence, and a report that answers *your* question first. |
+| 🔍 **Agentic hybrid RAG** | **BM25 + bge dense** fused with **RRF**, a **cross-encoder re-ranker**, and a **CRAG** loop that grades evidence and falls back to the live web when it's weak. An entity guard keeps evidence about the *right* company. |
+| 🔐 **Production security** | Argon2id accounts + guest demo, 15-min JWTs with **rotating refresh tokens** (reuse detection) in an httpOnly cookie, RBAC, **AES-256-GCM encryption at rest** with key rotation, TLS to Postgres, audit log. |
+| ⚖️ **Built to scale out** | Stateless API behind **nginx (least_conn, SSE-safe)**, **GCRA rate limits** + run admission on Redis/Postgres, circuit breakers, bulkheads, caching and Retry-After-aware retries per provider. |
+| 📈 **Self-improvement that has to prove itself** | Failures are attributed to one agent → one bounded change (a lesson, exemplars, or retrieval depth) → **paired replay on a holdout benchmark** → released only on a statistically real gain, after admin approval. |
+| 🧪 **Tested like a product** | 400+ offline tests on real Postgres + Redis in CI, plus a **live agentic eval** (DeepEval) that runs persona scenarios end to end and judges the reports. |
+| 🗂️ **Four memory layers** | Working (state) · Semantic (RAG) · **Episodic, scoped per user and per company** · Procedural (playbooks). |
+| 👁️ **Observability-first** | Every agent node and tool call traced in **Langfuse** with tokens and cost. |
+| 💸 **$0 to run** | Groq free tier, local embeddings, free Tavily/SEC, self-hostable Qdrant & Langfuse. |
 
 ## 🖥️ Screenshots
 
 <div align="center">
 
-**Live war-room — agents researching & debating in real time**
+<img src="docs/images/landing.png" alt="Atlas landing page" width="90%">
 
-<img src="atlas-warroom-initial.png" alt="Atlas war-room — agents active" width="90%">
+**Live run — four analysts research in parallel, then argue both sides**
 
-**Final cited report with confidence score**
+<img src="docs/images/live-run.png" alt="Atlas live research run" width="90%">
 
-<img src="atlas-warroom-result.png" alt="Atlas cited report" width="90%">
+**The brief answers the reader's question first — verdict, confidence, top risk, bottom line**
+
+<img src="docs/images/report.png" alt="Atlas due-diligence brief for RevSquad AI" width="90%">
+
+**Them vs. you, and sourced strengths and weaknesses**
+
+<img src="docs/images/head-to-head.png" alt="RevSquad AI vs CaughtLeads comparison" width="48%"> <img src="docs/images/strengths-weaknesses.png" alt="Strengths and weaknesses" width="48%">
+
+**Learning loop — every component's live policy, experiments and rollbacks**
+
+<img src="docs/images/learning.png" alt="Atlas learning loop dashboard" width="90%">
 
 </div>
 
 ## 🏗️ Architecture
 
 ```
-Next.js war-room UI ──SSE──> FastAPI ──> LangGraph graph  (SQLite-checkpointed state)
+Browser ──> Next.js (BFF: httpOnly session cookie) ──SSE──> nginx (least_conn) ──> FastAPI × N
+                                                                              │
+   auth (JWT + refresh rotation) · rate limits (GCRA) · run admission · audit │
+                                                                              ▼
+   SUPERVISOR (research brief) → recall (same user + same company) →
+   [ Fundamentals · News/Sentiment · Risk · Market ]  (parallel) →
+   BULL ⇄ BEAR debate → SYNTHESIZER + JUDGE → human review → remember → cited report
 
-   recall(memory) → SUPERVISOR → [ Fundamentals · News/Sentiment · Risk · Market ]  (parallel)
-                       → BULL ⇄ BEAR debate → SYNTHESIZER + JUDGE
-                       → remember(memory) → cited report + confidence
-
-  Memory        Working (state) · Semantic (RAG) · Episodic (SQLite+vectors) · Procedural (playbooks)
-                + Summarizer agent (cheaper model) distilling past runs into durable facts
-  Hybrid RAG    BM25 + bge (EnsembleRetriever/RRF) → CrossEncoderReranker → CRAG → Qdrant/InMemory
-  Tools (MCP)   web_search (Tavily) · sec_edgar · stock_data (stooq) · company_news
-  LLM-Ops       Langfuse trace + Ragas eval → gate → diagnose → rewrite prompt → re-eval → release
+  Evidence      own website · reviews · employees · LinkedIn/funding · alternatives · asker's site
+                · SEC EDGAR · stock data · news · uploaded documents
+  Hybrid RAG    BM25 + bge (RRF) → cross-encoder → CRAG (grade → web fallback) → Qdrant/InMemory
+  State         Postgres (checkpoints, users, records — AES-256-GCM encrypted) · Redis (limits)
+  LLM-Ops       record → diagnose → one change → paired replay → gate → admin approval → release
 ```
 
 ## 🤖 Meet the agents
@@ -96,7 +123,7 @@ Atlas is a **team**, not a prompt chain. Each agent has a single job, its own pr
 
 | Agent | Role |
 |---|---|
-| 🧭 **Supervisor** | Plans the run and dispatches the four specialists in parallel over shared state. |
+| 🧭 **Supervisor** | Writes the research brief (subject · asker · persona · goal · extra asks), verifies it, and dispatches the four specialists in parallel. |
 | 📊 **Fundamentals** | Digs into financials, filings, and business model — the numbers behind the company. |
 | 📰 **News / Sentiment** | Reads recent news and gauges momentum, tone, and market perception. |
 | ⚠️ **Risk** | Hunts for red flags — competition, regulation, concentration, execution risk. |
@@ -131,42 +158,47 @@ query
 - **CRAG** means the system doesn't blindly trust its first retrieval: it grades the context and re-searches when it's weak.
 - **Provenance everywhere** — every chunk carries its source so the grounding guardrail can enforce citations.
 
-## 🔁 The self-improving LLM-Ops loop
+## 🔁 The self-improving learning loop
 
-This is the part that turns Atlas from "a demo" into "a system that measures and improves itself":
+Atlas changes **what each agent is given**, not the model's weights: a short written **lesson**,
+a few **worked exemplars**, or **how much evidence it retrieves**. That is cheap, reversible and
+measurable — and every change has to prove itself before anyone sees it:
 
 ```
-run research ─▶ evaluate (Ragas) ─▶ gate ──pass──▶ ✅ release
-                  │  faithfulness       │
-                  │  answer relevancy   └──fail──▶ diagnose weak prompt
-                  │  context precision                  │
-                  └──────────── push scores ──▶ Langfuse │
-                                                         ▼
-                                          rewrite prompt (candidate)
-                                                         ▼
-                                          re-evaluate ─▶ gate ─▶ release
-                                                                (versioned prompt registry)
+every run ─▶ auto-eval + your review (approve / revise / reject) ─▶ run record
+                                                                      │
+   diagnose: which ONE agent caused the failures? (human feedback weighs most)
+                                                                      ▼
+   propose ONE bounded change  ─▶  paired replay: old vs new policy on the SAME
+   (lesson · exemplars · top-k)     6-question holdout benchmark, ≥ 4 trials
+                                                                      ▼
+   gate: ≥ 75% of questions improve AND bootstrap 97.5% lower bound > 0, no failed trials
+                                                                      ▼
+   admin approves the exact lesson text ─▶ release as a new version ─▶ auto-rollback on regression
 ```
 
-- **Auto-eval** — every run is scored on faithfulness, answer relevancy, and context precision.
-- **Quality gate** — runs below threshold don't ship; they trigger improvement.
-- **Self-improvement** — the optimizer diagnoses the failing prompt, rewrites it, re-evaluates, and only promotes it if it actually scores better.
-- **Versioned prompt registry** — active prompt + candidate canary + full history, so every change is tracked and reversible.
+- **Honest about noise** — in simulation ~4% of useless changes pass the gate, while ~95% of real
+  +0.08 improvements do (tested in `tests/test_learning_loop.py`).
+- **Safe input** — only signed-up reviewers count, degraded runs teach nothing, and lessons with
+  links or instruction-hijack phrasing are refused.
 
 ## 🧰 Tech stack
 
 | Layer | Choice |
 |---|---|
-| **Orchestration** | LangGraph (supervisor + specialist nodes, SQLite checkpointer) |
+| **Orchestration** | LangGraph (supervisor + specialist nodes, Postgres/SQLite checkpointer) |
 | **LLM** | Groq · GPT-OSS-120B (`openai/gpt-oss-120b`); GPT-OSS-20B (`openai/gpt-oss-20b`) for cheap ops tasks |
 | **RAG** | LangChain hybrid: `BM25Retriever` + `bge-small-en-v1.5` (EnsembleRetriever/RRF) → `CrossEncoderReranker` → CRAG · Qdrant/InMemory |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` — free, local (sentence-transformers) |
-| **Memory** | Episodic (SQLite + embeddings) · Procedural (playbook files) · Summarizer agent |
+| **Memory** | Episodic (Postgres/SQLite + embeddings, scoped per user) · Procedural (playbook files) · Summarizer agent |
 | **Tools** | MCP server: web_search (Tavily) · sec_edgar · stock_data (stooq) · company_news |
 | **Backend** | FastAPI + SSE streaming |
 | **Observability** | Langfuse (trace/eval/cost) + Ragas + self-improving LLM-Ops loop |
 | **Frontend** | Next.js + Tailwind (hand-rolled war-room components) |
-| **Infra** | Docker Compose (qdrant + langfuse + api + web) |
+| **Auth & security** | Argon2id · JWT (HS256) + rotating refresh tokens · AES-256-GCM at rest · audit log |
+| **Scale** | nginx least_conn · Redis/Postgres GCRA rate limits · circuit breakers & bulkheads |
+| **Evaluation** | Ragas · claim-level citation verifier · DeepEval live agentic scenarios |
+| **Infra** | Docker Compose (nginx + api × N + redis + qdrant + langfuse + web) · Render + Vercel · GitHub Actions |
 
 ## 🚀 Quickstart (local)
 
@@ -204,33 +236,37 @@ docker compose up                          # qdrant + langfuse + api + web
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health`, `/health/ready` | liveness + per-integration readiness |
-| `POST` | `/research/sync` | run the multi-agent pipeline, return the cited report |
-| `GET` | `/research/stream?q=...` | SSE stream of per-agent events (drives the war-room UI) |
-| `GET` | `/corpus/status` | what's indexed — documents + chunk count |
-| `POST` | `/corpus/upload` | ingest an uploaded PDF / Word / text file into the live index |
-| `POST` | `/corpus/text` | ingest pasted text |
-| `POST` | `/corpus/sec` | fetch a real SEC filing by ticker and ingest it |
-| `GET` | `/llmops/prompts` | list versioned synthesizer prompts (active + history) |
-| `POST` | `/llmops/optimize` | run the self-improvement loop (eval → gate → rewrite → release) |
+| `GET` | `/health`, `/health/ready`, `/health/upstreams` | liveness, readiness, per-provider breaker state |
+| `POST` | `/auth/register`, `/auth/login`, `/auth/guest` | create a session (guest = limited demo) |
+| `POST` | `/auth/refresh`, `/auth/logout`, `/auth/logout-all` | rotate / revoke refresh tokens |
+| `GET` | `/research/stream?q=...` | SSE stream of agent events (drives the UI) |
+| `GET` | `/research/resume` | approve / revise / reject a paused draft |
+| `POST` | `/research/sync` | run the pipeline and return the report |
+| `GET`/`POST` | `/corpus/status`, `/corpus/upload`, `/corpus/text`, `/corpus/sec` | knowledge base (writes: admin) |
+| `GET` | `/llmops/overview`, `/llmops/experiments` | learning-loop dashboard data |
+| `POST` | `/llmops/improve`, `/llmops/experiments/{id}/approve`, `/llmops/rollback` | run / approve / roll back (admin) |
+| `GET` | `/admin/audit` | security audit log (admin) |
 
 ## 🗂️ Project layout
 
 ```
 apps/api/atlas/
-  core/graph.py        LangGraph wiring (recall → supervisor → specialists → debate → synthesize → remember)
-  core/agents/         specialists (4), debate (bull/bear/judge), synthesizer, base
+  core/graph.py        LangGraph wiring (supervisor → recall → specialists → debate → synthesize → review → remember)
+  core/agents/         research brief, specialists (4), debate (bull/bear/judge), synthesizer, report schema
   core/rag/            LangChain hybrid retrieval + CRAG, ingestion, embeddings
-  core/memory/         episodic (SQLite+vectors), procedural (playbooks), summarizer
-  core/llmops/         prompt registry, auto-eval, per-agent eval, gate, self-improvement optimizer
-  core/tools/          web_search (Tavily), sec, market (stock + news)
+  core/memory/         episodic (per-user, encrypted), procedural (playbooks), summarizer
+  core/llmops/         run records, diagnose, proposer, paired replay, improver (gate + approval + rollback)
+  core/tools/          web_search (Tavily), website reader (SSRF-safe), sec, market (stock + news)
+  security/            passwords, tokens, auth store, encryption at rest, rate limits, audit
   eval/                golden set, retrieval eval, Ragas → Langfuse scores
-  routers/             health, research (SSE), llmops
+  routers/             health, auth, admin, research (SSE), corpus, llmops
+  evals/agentic/       live persona scenarios judged with DeepEval
 apps/web/              Next.js war-room frontend
 data/corpus/           sample corpus (*.md tracked); other ingested docs gitignored
 data/playbooks/        procedural-memory agent playbooks
 docs/                  architecture + deployment runbook
 .claude/               project subagents + skills that drove development
+infra/nginx/          load balancer config (least_conn, SSE-safe)
 CLAUDE.md              architecture, stack, conventions, milestones
 ```
 
@@ -252,13 +288,39 @@ All metrics push to Langfuse (`ragas_*`, `citation_coverage`, `citation_correctn
 
 ## 🧪 Testing
 
-The suite is **fully offline and hermetic** — a `conftest.py` forces `ATLAS_OFFLINE_LLM` and `ATLAS_OFFLINE_EMBED`, so **no API keys or network are needed** (CI-friendly):
-
 ```bash
-cd apps/api && python -m pytest -q          # stub LLM + hashing embedder
+cd apps/api && python -m pytest -q          # offline: stub LLM + hashing embedder, no keys needed
 ```
 
-Tests are **contract-focused** across unit / integration / API / eval layers, with an adversarial edge-case sweep (empty inputs, no-match queries, unicode, duplicate ingest, missing keys) and regression guards for every fixed bug.
+- **400+ offline tests** — contract-focused, with table tests for the research brief, the SSRF
+  guard, citation-key stability, tenant-scoped memory, encryption and key rotation, token reuse
+  detection, rate limits, and the learning-loop decision rule under simulated noise. CI runs them
+  against **real Postgres 16 + Redis 7**.
+- **Live agentic eval** (`apps/api/evals/agentic`, DeepEval) — persona scenarios (competitor,
+  buyer, investor, public-company regression, prompt injection) run the real agents, then
+  deterministic checks (right company, right reader, citations resolve) and judged metrics
+  (answers the question, surfaces negatives, persona fit, faithfulness):
+
+```bash
+pip install -e ".[dev,agent-eval]"
+python -m pytest evals/agentic -q -k caughtleads     # needs GROQ_API_KEY (+ TAVILY_API_KEY)
+```
+
+## 🚦 CI/CD
+
+```
+push to main ─▶ Atlas CI ─┬─ backend: ruff + pytest (Postgres + Redis services) + dependency audit
+                          ├─ retrieval eval gate (quality must not regress)
+                          └─ frontend: lint + typecheck + production build
+                 all green ─▶ Atlas Deploy ─▶ Render deploy hook (this exact commit)
+                                            ─▶ wait until /health reports that commit ─▶ API smoke test
+                                            ─▶ Vercel deploy ─▶ web smoke test (pages, API URL, CORS)
+weekly / manual ─▶ Atlas agent eval (live persona scenarios, results uploaded as an artifact)
+```
+
+An independent architecture review — 20 findings, what was fixed, what is still open — lives in
+[docs/architecture-review.md](docs/architecture-review.md); the security design in
+[docs/security.md](docs/security.md).
 
 ## 🗺️ Roadmap
 
@@ -269,7 +331,10 @@ Tests are **contract-focused** across unit / integration / API / eval layers, wi
 - [x] **M4** Debate & synthesis — bull/bear/judge, cited report + confidence + grounding guardrail
 - [x] **M5** War-room frontend — live agent graph, streaming debate, report view
 - [x] **M6** Memory layers — episodic (SQLite + vectors), procedural (playbooks), summarizer agent
-- [x] **M7** LLM-Ops — auto eval → gate → self-improvement (rewrite prompt) → release (prompt registry)
+- [x] **M7** LLM-Ops — record → diagnose → one bounded change → paired replay → release / rollback
+- [x] **M8** Production — accounts, JWT + refresh rotation, encryption at rest, rate limits, load balancer, audit
+- [x] **M9** Private companies — research brief + personas, website/review/LinkedIn evidence, persona reports, agentic eval
+- [ ] Next: provider-wide token budget + per-run deadline · verify statements before delivery · durable job queue
 
 ## 📝 Design notes
 
