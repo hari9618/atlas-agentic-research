@@ -7,17 +7,25 @@ import { CitedOrMuted, Prose, Section, type Ctx } from "../Section";
 
 type P = { s: ReportSections; c: Ctx; n?: number };
 
+/** When the brief carries top-level strengths/weaknesses (persona-aware schema), the
+ *  market_position copies only mirror them: render them once, in their own section. */
+const mirrored = (s: ReportSections) =>
+  nonEmpty((s.strengths ?? []).filter(hasText)) || nonEmpty((s.weaknesses ?? []).filter(hasText));
+
 export const hasMarketPosition = (s: ReportSections) => {
   const m = s.market_position;
-  return !!m && (hasText(m.summary) || nonEmpty((m.strengths ?? []).filter(hasText)) || nonEmpty((m.weaknesses ?? []).filter(hasText)));
+  if (!m) return false;
+  if (hasText(m.summary)) return true;
+  if (mirrored(s)) return false;
+  return nonEmpty((m.strengths ?? []).filter(hasText)) || nonEmpty((m.weaknesses ?? []).filter(hasText));
 };
 
 /** A titled column of points with a header strip (strengths / weaknesses). */
-function Ledger({ kind, items, c }: { kind: "good" | "bad"; items: string[]; c: Ctx }) {
+export function Ledger({ kind, items, c, title }: { kind: "good" | "bad"; items: string[]; c: Ctx; title?: string }) {
   const good = kind === "good";
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200/80">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/70 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/70 px-4 py-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <span
             aria-hidden
@@ -28,9 +36,9 @@ function Ledger({ kind, items, c }: { kind: "good" | "bad"; items: string[]; c: 
           >
             <Icon name={good ? "plus" : "minus"} className="h-3 w-3" strokeWidth={3} />
           </span>
-          {good ? "Strengths" : "Weaknesses"}
+          {title ?? (good ? "Strengths" : "Weaknesses")}
         </p>
-        <span className="font-mono text-[11px] text-slate-400 tabular-nums">{items.length}</span>
+        <span className="font-mono text-2xs text-slate-500 tabular-nums">{items.length}</span>
       </div>
       <ul className="divide-y divide-slate-100">
         {items.map((item, i) => (
@@ -52,8 +60,9 @@ function Ledger({ kind, items, c }: { kind: "good" | "bad"; items: string[]; c: 
 export function MarketPosition({ s, c, n }: P) {
   const m = s.market_position;
   if (!m || !hasMarketPosition(s)) return null;
-  const strengths = (m.strengths ?? []).filter(hasText);
-  const weaknesses = (m.weaknesses ?? []).filter(hasText);
+  const skip = mirrored(s);
+  const strengths = skip ? [] : (m.strengths ?? []).filter(hasText);
+  const weaknesses = skip ? [] : (m.weaknesses ?? []).filter(hasText);
   const both = nonEmpty(strengths) && nonEmpty(weaknesses);
   return (
     <Section c={c} id="market" n={n} title="Market position" description="Where the company stands, and where it is exposed.">
@@ -83,13 +92,13 @@ export function Competitors({ s, c, n }: P) {
       title="Competitors"
       description="How the closest rivals compare."
       aside={
-        <span className="font-mono text-[11px] text-slate-400">
+        <span className="font-mono text-2xs text-slate-500">
           {rows.length} compan{rows.length === 1 ? "y" : "ies"}
         </span>
       }
     >
       <div className="overflow-hidden rounded-xl border border-slate-200/80">
-        <div aria-hidden className={cx("hidden border-b border-slate-200/80 bg-slate-50/70 px-4 py-2.5 text-slate-500 @xl:grid", grid, monoLabel)}>
+        <div aria-hidden className={cx("hidden border-b border-slate-200/80 bg-slate-50/70 px-4 py-2 text-slate-500 @xl:grid", grid, monoLabel)}>
           <span>Company</span>
           <span>How they compare</span>
           <span className="text-right">Threat</span>
@@ -108,7 +117,7 @@ export function Competitors({ s, c, n }: P) {
                 {hasText(r.threat) ? (
                   <LevelPill value={r.threat} suffix=" threat" />
                 ) : (
-                  <span className="text-xs text-slate-400">Not rated</span>
+                  <span className="text-xs text-slate-500">Not rated</span>
                 )}
               </div>
               {hasText(r.comparison) && (

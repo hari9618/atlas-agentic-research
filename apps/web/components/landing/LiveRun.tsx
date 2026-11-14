@@ -25,10 +25,9 @@ export function LiveRun() {
   return (
     <a
       href="#sample-report"
-      data-ripple
-      className="spotlight group block rounded-2xl border border-white/10 bg-ink-900/85 p-5 text-white shadow-[0_30px_80px_-30px_rgb(202_245_70/0.35)] backdrop-blur transition-transform duration-300 hover:-translate-y-1"
+      className="group block rounded-xl border border-white/10 bg-ink-900/90 p-5 text-white backdrop-blur"
     >
-      <span className="flex items-center justify-between font-mono text-[10px] tracking-[0.16em] text-slate-400 uppercase">
+      <span className="flex items-center justify-between font-mono text-2xs tracking-label text-slate-400 uppercase">
         Sample run
         <span className="text-slate-300">Helios Robotics</span>
       </span>
@@ -37,7 +36,7 @@ export function LiveRun() {
           <li
             key={label}
             className={cx(
-              "flex items-center gap-2.5 text-sm transition-colors duration-300",
+              "flex items-center gap-2 text-sm transition-colors duration-300",
               i === step ? "text-white" : "text-slate-400",
             )}
           >

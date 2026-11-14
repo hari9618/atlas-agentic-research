@@ -24,13 +24,16 @@
 
   --color-surface: #fcfdfb;
 
+  /* Type scale: 2xs (11px, mono labels) plus Tailwind's xs/sm/base/lg/xl/2xl. Display
+     serif sizes are reserved for the landing hero/closing and the report's company name. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  /* The one letter-spacing for uppercase mono labels. */
+  --tracking-label: 0.12em;
+
   --color-accent-300: #e3fb93;
   --color-accent-400: #d4f75a;
   --color-accent-500: #b9e03b;
-  /* Legacy names for the accent, kept until every usage says accent-*. */
-  --color-gold-300: var(--color-accent-300);
-  --color-gold-400: var(--color-accent-400);
-  --color-gold-500: var(--color-accent-500);
 
   --color-slate-50: #f5f6f3;
   --color-slate-100: #eceee9;
@@ -57,7 +60,6 @@
   --color-indigo-950: #172808;
 
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
-  --animate-marquee: marquee 48s linear infinite;
   --animate-scan: scan 3.2s ease-in-out infinite;
   --animate-blink: blink 2.4s ease-in-out infinite;
   /* A block arriving (state changes in the workspace): a short rise and fade. */
@@ -109,12 +111,6 @@
     }
   }
 
-  @keyframes marquee {
-    to {
-      transform: translateX(-50%);
-    }
-  }
-
   /* A progress bar that fills, holds, then resets: "this analyst is working". */
   @keyframes scan {
     0% {
@@ -137,38 +133,6 @@
   }
 }
 
-/* Faint grid lines that fade out towards the edges (for ink surfaces). */
-@utility bg-grid {
-  background-image:
-    linear-gradient(to right, rgb(255 255 255 / 0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(255 255 255 / 0.055) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse 75% 60% at 50% 0%, #000 35%, transparent 100%);
-}
-
-/* The same grid in slate, for light surfaces. */
-@utility bg-grid-light {
-  background-image:
-    linear-gradient(to right, rgb(15 23 42 / 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(15 23 42 / 0.05) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 30%, transparent 100%);
-}
-
-/* The one emphasised phrase in a headline. */
-@utility text-shine {
-  color: var(--color-gold-300);
-}
-
-@utility text-shine-dark {
-  color: var(--color-indigo-700);
-}
-
-/* Fade the ends of a horizontally scrolling strip. */
-@utility mask-fade-x {
-  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
-}
-
 @layer base {
   html {
     scroll-behavior: smooth;
@@ -184,7 +148,6 @@
   :focus-visible {
     outline: 2px solid var(--color-indigo-500);
     outline-offset: 2px;
-    border-radius: 4px;
   }
 
   ::selection {
@@ -381,92 +344,9 @@
   }
 }
 
-/* ---- Micro-interactions (wired up by components/ui/Interactions.tsx) ---------- */
-
 /* Tailwind 4 resets buttons to the default cursor: anything clickable says so. */
 :where(button:not(:disabled), [role="button"], [role="switch"], summary, label[for]) {
   cursor: pointer;
-}
-
-/* Press: a small give under the finger. `scale` (not transform) so it never fights
-   Tailwind's translate utilities. */
-:where(button:not(:disabled), a[class*="rounded-full"], [data-ripple]):active {
-  scale: 0.97;
-}
-
-.ripple-clip {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.ripple {
-  position: absolute;
-  border-radius: 9999px;
-  translate: -50% -50%;
-  scale: 0;
-  background: color-mix(in srgb, currentColor 22%, transparent);
-  animation: ripple-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.ripple.is-out {
-  opacity: 0;
-}
-
-@keyframes ripple-grow {
-  to {
-    scale: 1;
-  }
-}
-
-/* Cursor spotlight: a soft gold light behind the content and a lit edge nearest
-   the pointer. */
-.spotlight {
-  position: relative;
-  isolation: isolate;
-}
-
-.spotlight::before,
-.spotlight::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-  border-radius: inherit;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.spotlight::before {
-  inset: 0;
-  z-index: -1;
-  background: radial-gradient(
-    360px circle at var(--sx, 50%) var(--sy, 50%),
-    color-mix(in srgb, var(--color-gold-400) 13%, transparent),
-    transparent 70%
-  );
-}
-
-.spotlight::after {
-  inset: 0;
-  padding: 1px;
-  background: radial-gradient(
-    240px circle at var(--sx, 50%) var(--sy, 50%),
-    color-mix(in srgb, var(--color-gold-400) 75%, transparent),
-    transparent 65%
-  );
-  mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
-}
-
-@media (hover: hover) {
-  .spotlight:hover::before,
-  .spotlight:hover::after {
-    opacity: 1;
-  }
 }
 
 /* Theme switch: the new theme opens as a circle from the switch (ThemeToggle). */
@@ -484,30 +364,6 @@
 .link-rule:hover,
 .link-rule:focus-visible {
   background-size: 100% 1px;
-}
-
-/* ---- Scroll reveal -----------------------------------------------------------
-   Pure CSS, progressive: browsers with scroll-driven animations fade sections in
-   as they enter; everywhere else (and with reduced motion) content is simply shown. */
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .reveal {
-      animation: reveal-up linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 30%;
-    }
-  }
-}
-
-@keyframes reveal-up {
-  from {
-    opacity: 0;
-    transform: translateY(28px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 /* ---- Print / "Save as PDF" -------------------------------------------------

@@ -1,5 +1,6 @@
 import type { Metric, ReportSections } from "@/lib/api";
 import { hasText, isPlaceholder, nonEmpty } from "@/lib/citations";
+import { briefLine } from "@/lib/persona";
 import { Badge } from "@/components/ui/Badge";
 import { cx, titleCase, toneOf } from "@/components/ui/styles";
 import { CiteChips, LevelPill, Trend } from "./bits";
@@ -52,7 +53,7 @@ function headlineCells(s: ReportSections, c: Ctx): Cell[] {
         <>
           <Trend change={m.change} surface="dark" />
           <span className="ml-auto shrink-0">
-            <CiteChips citation={m.citation} ns={c.ns} tone="dark" />
+            <CiteChips citation={m.citation} ns={c.ns} nums={c.nums} tone="dark" />
           </span>
         </>
       ) : undefined,
@@ -111,28 +112,14 @@ export function ReportHeader({
   const cells = headlineCells(s, c);
   const odd = cells.length % 2 === 1;
   const bottom = hasText(s.bottom_line) ? s.bottom_line : null;
+  const who = briefLine(s.brief);
 
   return (
-    <header
-      id={sectionId(c, "brief")}
-      className="relative isolate scroll-mt-32 overflow-hidden rounded-2xl bg-ink-950 text-white shadow-[0_30px_70px_-40px_rgb(5_7_13/0.7)] ring-1 ring-ink-700/70"
-    >
-      <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
-      <div
-        aria-hidden
-        className="absolute -top-40 -left-24 -z-10 h-[26rem] w-[44rem] bg-[radial-gradient(closest-side,rgb(190_235_70/0.34),transparent)]"
-      />
-      <div
-        aria-hidden
-        className="absolute -right-24 -bottom-40 -z-10 h-[22rem] w-[30rem] bg-[radial-gradient(closest-side,rgb(190_235_70/0.12),transparent)]"
-      />
+    <header id={sectionId(c, "brief")} className="scroll-mt-32 overflow-hidden rounded-xl bg-ink-950 text-white ring-1 ring-ink-700">
 
       <div className="px-5 pt-5 pb-6 @2xl:px-8 @2xl:pt-6 @2xl:pb-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="flex items-center gap-2 font-mono text-[10.5px] font-medium tracking-[0.2em] text-slate-400 uppercase">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
-            Due-diligence brief
-          </p>
+          <p className="font-mono text-2xs font-medium tracking-label text-slate-400 uppercase">Due-diligence brief</p>
           <div className="flex flex-wrap items-center gap-2">
             {label && <Badge surface="dark">{label}</Badge>}
             <RevisionBadge revision={revision} surface="dark" />
@@ -146,9 +133,16 @@ export function ReportHeader({
             <H className="mt-3 font-display text-[2.6rem] leading-[1] tracking-tight text-balance text-white @2xl:text-6xl">
               {s.company || "Research brief"}
             </H>
+            {(who || hasText(s.brief?.goal)) && (
+              <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                {who && <span className="font-medium text-white">{who}</span>}
+                {who && hasText(s.brief?.goal) && <span aria-hidden className="mx-2 text-slate-500">/</span>}
+                {hasText(s.brief?.goal) && <span>{s.brief!.goal}</span>}
+              </p>
+            )}
             {hasText(s.headline) && (
               <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-300 @2xl:text-lg">
-                <Cited text={s.headline} ns={c.ns} tone="dark" />
+                <Cited text={s.headline} ns={c.ns} nums={c.nums} tone="dark" />
               </p>
             )}
           </div>
@@ -167,11 +161,11 @@ export function ReportHeader({
               <div
                 key={cell.key}
                 className={cx(
-                  "flex min-w-0 flex-col bg-ink-900/85 p-3.5 backdrop-blur @md:p-4 @2xl:p-5",
+                  "flex min-w-0 flex-col bg-ink-900/85 p-4 backdrop-blur @md:p-4 @2xl:p-5",
                   odd && i === cells.length - 1 && "col-span-2 @3xl:col-span-1",
                 )}
               >
-                <dt className="min-h-[2.75em] font-mono text-[10px] leading-snug font-medium tracking-[0.16em] text-slate-400 uppercase">
+                <dt className="min-h-[2.75em] font-mono text-2xs leading-snug font-medium tracking-label text-slate-400 uppercase">
                   {cell.label}
                 </dt>
                 <dd
@@ -190,14 +184,14 @@ export function ReportHeader({
 
         {bottom && (
           <div className="mt-6 grid gap-2 border-t border-white/[0.08] pt-5 @2xl:grid-cols-[9rem_minmax(0,1fr)] @2xl:gap-6">
-            <p className="font-mono text-[10.5px] font-medium tracking-[0.16em] text-indigo-300 uppercase @2xl:pt-1">
+            <p className="font-mono text-2xs font-medium tracking-label text-indigo-300 uppercase @2xl:pt-1">
               Bottom line
             </p>
             {isPlaceholder(bottom) ? (
               <p className="text-slate-400 italic">{bottom}</p>
             ) : (
-              <p className="max-w-[75ch] text-[15px] leading-7 font-medium text-slate-100 @2xl:text-base">
-                <Cited text={bottom} ns={c.ns} tone="dark" />
+              <p className="max-w-[75ch] text-base leading-7 font-medium text-slate-100 @2xl:text-base">
+                <Cited text={bottom} ns={c.ns} nums={c.nums} tone="dark" />
               </p>
             )}
           </div>

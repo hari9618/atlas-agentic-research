@@ -18,11 +18,11 @@ function MetricCard({ m, c }: { m: Metric; c: Ctx }) {
   const placeholder = isPlaceholder(m.value);
   const long = (m.value ?? "").length > 11;
   return (
-    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200/80 bg-linear-to-b from-slate-50/90 to-surface p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
+    <li className="flex min-w-0 flex-col rounded-lg border border-slate-200/80 p-4">
       <div className="flex items-start justify-between gap-2">
         <span className="min-w-0 text-xs leading-snug font-medium text-slate-500">{m.label}</span>
         <span className="-mt-0.5 shrink-0">
-          <CiteChips citation={m.citation} ns={c.ns} />
+          <CiteChips citation={m.citation} ns={c.ns} nums={c.nums} />
         </span>
       </div>
       {placeholder ? (
@@ -38,7 +38,7 @@ function MetricCard({ m, c }: { m: Metric; c: Ctx }) {
         </span>
       )}
       {hasText(m.change) && (
-        <div className="mt-auto border-t border-dashed border-slate-200 pt-2.5 [&>span]:mt-0">
+        <div className="mt-auto border-t border-dashed border-slate-200 pt-2 [&>span]:mt-0">
           <Trend change={m.change} />
         </div>
       )}
@@ -59,7 +59,7 @@ export function Financials({ s, c, n }: P) {
       description="Headline figures and the trend behind them."
       aside={
         nonEmpty(metrics) ? (
-          <span className="font-mono text-[11px] text-slate-400">
+          <span className="font-mono text-2xs text-slate-500">
             {metrics.length} figure{metrics.length === 1 ? "" : "s"}
           </span>
         ) : undefined

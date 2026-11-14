@@ -7,16 +7,16 @@ import { HeroStage } from "./HeroStage";
 import { LiveRun } from "./LiveRun";
 
 const EXAMPLES = [
-  "Should I invest in NVIDIA?",
-  "Reliance Industries: growth and risks",
-  "How does Stripe compare to Adyen?",
+  "My company is caughtleads.com. Should I worry about revsquad.ai?",
+  "Should we buy from gong.io? What does it cost for 20 reps?",
+  "Is linear.app a good investment?",
 ];
 
 const STATS = [
-  { value: "4", label: "specialist analysts per question" },
+  { value: "4", label: "analysts research each question in parallel" },
   { value: "2", label: "sides argued before anything is written" },
-  { value: "17", label: "sections in every investor brief" },
-  { value: "~2 min", label: "from question to cited draft" },
+  { value: "6", label: "angles: investor, competitor, buyer, partner, job seeker, general" },
+  { value: "~2 min", label: "from question to a cited draft" },
 ];
 
 /** Position in the staggered entrance (see .hero-copy in globals.css). */
@@ -32,21 +32,22 @@ export function Hero() {
         >
           <div className="hero-copy max-w-[35rem]">
             <p
-              className="flex items-center gap-3 font-mono text-[11px] tracking-[0.18em] text-slate-700 uppercase"
+              className="flex items-center gap-3 font-mono text-2xs tracking-label text-slate-700 uppercase"
               style={order(0)}
             >
               <span aria-hidden className="h-px w-8 bg-current" />
-              Autonomous due diligence
+              Due diligence for private companies
             </p>
             <h1
               className="mt-5 font-display text-[3.1rem] leading-[0.98] tracking-tight text-balance sm:text-7xl xl:text-[5.4rem]"
               style={order(1)}
             >
-              Due diligence on any company, <em className="text-indigo-700">in minutes.</em>
+              Know the company <em className="text-indigo-700">before you commit.</em>
             </h1>
             <p className="mt-5 max-w-md text-base leading-relaxed text-slate-700" style={order(2)}>
-              AI analysts research financials, news, market and risk, argue both sides, and hand you a brief where
-              every claim links to its source.
+              A competitor, a vendor, an investment or an employer: most small companies have no analyst coverage.
+              Tell Atlas who you are and what you need to decide. It researches the web, news and filings, argues both
+              sides, and answers your question with every claim linked to its source.
             </p>
             <div style={order(3)}>
               <Form
@@ -63,20 +64,20 @@ export function Hero() {
                   required
                   minLength={3}
                   autoComplete="off"
-                  placeholder="Ask about any company…"
+                  placeholder="e.g. Should we buy from gong.io?"
                   className="w-full min-w-0 flex-1 bg-transparent py-2 text-base placeholder:text-slate-600 focus:outline-none"
                 />
                 <button
                   type="submit"
                   aria-label="Research"
-                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent-400 px-5 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300"
+                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-accent-400 px-5 text-sm font-medium text-ink-950 transition-colors hover:bg-accent-300"
                 >
                   <span className="hidden sm:inline">Research</span>
                   <Icon name="arrowRight" />
                 </button>
               </Form>
             </div>
-            <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-1" aria-label="Example questions" style={order(4)}>
+            <ul className="mt-4 flex flex-col gap-1" aria-label="Example questions" style={order(4)}>
               {EXAMPLES.map((q) => (
                 <li key={q}>
                   <Link
@@ -106,7 +107,7 @@ export function Hero() {
               <div key={s.label} className={i ? "border-slate-200 py-7 md:border-l md:pl-8" : "py-7"}>
                 <dt className="sr-only">{s.label}</dt>
                 <dd>
-                  <span className="block font-display text-4xl tracking-tight text-slate-950 sm:text-5xl">
+                  <span className="block font-mono text-3xl font-medium tracking-tight text-slate-950 tabular-nums">
                     {s.value}
                   </span>
                   <span className="mt-1 block text-xs text-slate-600 sm:text-sm">{s.label}</span>

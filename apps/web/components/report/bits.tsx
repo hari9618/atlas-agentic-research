@@ -1,4 +1,4 @@
-import { citationKey, hasText, splitCitations } from "@/lib/citations";
+import { citationKey, type CitationNumbers, hasText, splitCitations } from "@/lib/citations";
 import { Icon } from "@/components/ui/Icon";
 import { cx, titleCase, toneBadge, toneBadgeDark, toneDot, toneOf } from "@/components/ui/styles";
 import { SourceChip, type ChipTone } from "./Cited";
@@ -25,7 +25,7 @@ export function LevelPill({
   return (
     <span
       className={cx(
-        "inline-flex shrink-0 items-center gap-2 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset",
+        "inline-flex shrink-0 items-center gap-2 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset",
         surface === "dark" ? toneBadgeDark[tone] : toneBadge[tone],
         className,
       )}
@@ -75,14 +75,25 @@ export function Trend({ change, surface = "light" }: { change?: string; surface?
 }
 
 /** Chips for a `citation` field such as "[sec_edgar#0]" or "[a#0; b#1]". */
-export function CiteChips({ citation, ns, tone = "light" }: { citation?: string; ns: string; tone?: ChipTone }) {
+export function CiteChips({
+  citation,
+  ns,
+  nums,
+  tone = "light",
+}: {
+  citation?: string;
+  ns: string;
+  nums?: CitationNumbers;
+  tone?: ChipTone;
+}) {
   if (!hasText(citation)) return null;
   const cites = splitCitations(citation).filter((x) => x.type === "cite");
-  if (!cites.length) return <SourceChip label={citation} sourceKey={citationKey(citation)} ns={ns} tone={tone} />;
+  if (!cites.length)
+    return <SourceChip label={citation} sourceKey={citationKey(citation)} ns={ns} nums={nums} tone={tone} />;
   return (
     <>
       {cites.map((x, i) =>
-        x.type === "cite" ? <SourceChip key={i} label={x.label} sourceKey={x.key} ns={ns} tone={tone} /> : null,
+        x.type === "cite" ? <SourceChip key={i} label={x.label} sourceKey={x.key} ns={ns} nums={nums} tone={tone} /> : null,
       )}
     </>
   );
@@ -102,7 +113,7 @@ export function Monogram({ name, className }: { name: string; className?: string
     <span
       aria-hidden
       className={cx(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink-950 font-mono text-[11px] font-semibold text-white ring-1 ring-ink-700",
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink-950 font-mono text-2xs font-semibold text-white ring-1 ring-ink-700",
         className,
       )}
     >

@@ -15,6 +15,13 @@ const MAX_FEEDBACK = 2000;
 
 const QUICK: Record<string, string[]> = {
   all: ["Go deeper on competitors", "Add recent news", "Simplify the language", "Tighten the bottom line"],
+  verdict: ["Make the recommendation more specific", "Say what would change the answer"],
+  snapshot: ["Add team size and funding", "Check the founding year"],
+  head_to_head: ["Compare pricing directly", "Add a row on target customers"],
+  custom_answers: ["Answer with numbers where possible", "Cite a source for each answer"],
+  pricing: ["Estimate cost for our team size", "Note what's in each plan"],
+  strengths: ["Back each strength with evidence", "Focus on what matters to us"],
+  weaknesses: ["Look for customer complaints", "Check for legal or security issues"],
   financials: ["Add margins and cash flow", "Compare with last year", "Explain the revenue mix"],
   risks: ["Quantify the top risks", "Add regulatory risk", "Separate near-term from long-term"],
   competitors: ["Add pricing comparison", "Include smaller challengers", "Explain the moat"],
@@ -152,7 +159,7 @@ export function ReviewPanel({
           <div className="min-w-0">
             <h2
               id={`${uid}-title`}
-              className={cx("text-[15px] font-semibold", rejected ? "text-rose-900" : ended ? "text-amber-950" : "text-emerald-950")}
+              className={cx("text-base font-semibold", rejected ? "text-rose-900" : ended ? "text-amber-950" : "text-emerald-950")}
             >
               {rejected ? "Brief rejected" : ended ? "Review closed" : autoApproved ? "Brief complete" : "Brief approved"}
             </h2>
@@ -164,7 +171,7 @@ export function ReviewPanel({
                   : `Final version${revision > 0 ? `, revision ${revision}` : ""}. Download it as a PDF or ask a new question.`}
             </p>
             {rejected && rejectReason && (
-              <blockquote className="mt-2.5 border-l-2 border-rose-300 pl-3 text-sm leading-relaxed text-rose-900">
+              <blockquote className="mt-2 border-l-2 border-rose-300 pl-3 text-sm leading-relaxed text-rose-900">
                 {rejectReason}
               </blockquote>
             )}
@@ -199,14 +206,14 @@ export function ReviewPanel({
             <Spinner className="h-3.5 w-3.5" />
             Decision sent
           </p>
-          <h2 id={`${uid}-title`} className="mt-2 text-[15px] font-semibold text-slate-950">
+          <h2 id={`${uid}-title`} className="mt-2 text-base font-semibold text-slate-950">
             {c.title}
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">{c.body}</p>
           {busyAction === "revise" && last?.feedback && (
             <div className="mt-3 rounded-xl border border-slate-200/80 bg-surface p-3">
               {last.section && (
-                <span className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800 ring-1 ring-indigo-600/15 ring-inset">
+                <span className="mb-2 inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-2xs font-medium text-indigo-800 ring-1 ring-indigo-600/15 ring-inset">
                   <Icon name="target" className="h-3 w-3" />
                   {sectionLabel(last.section)}
                 </span>
@@ -226,9 +233,9 @@ export function ReviewPanel({
       <div className="border-b border-slate-100 bg-linear-to-b from-indigo-50/70 to-surface px-4 pt-4 pb-4">
         <div className="flex items-center justify-between gap-3">
           <p className={cx(monoLabel, "text-indigo-600")}>Your review</p>
-          <span className="font-mono text-[10.5px] text-slate-500 capitalize tabular-nums">{draftName(revision)}</span>
+          <span className="font-mono text-2xs text-slate-500 capitalize tabular-nums">{draftName(revision)}</span>
         </div>
-        <h2 id={`${uid}-title`} className="mt-2 text-[15px] font-semibold text-slate-950">
+        <h2 id={`${uid}-title`} className="mt-2 text-base font-semibold text-slate-950">
           Is this brief ready?
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-slate-600">
@@ -281,7 +288,7 @@ export function ReviewPanel({
             <fieldset>
               <legend className="text-sm font-medium text-slate-900">About which part?</legend>
               <p className="mt-0.5 text-xs text-slate-500">Optional. Pick one section to focus the revision.</p>
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" aria-pressed={chosen === null} onClick={() => setSection(null)} className={toggleChip}>
                   {chosen === null && <Icon name="check" className="h-3 w-3" strokeWidth={3} />}
                   Whole brief
@@ -307,7 +314,7 @@ export function ReviewPanel({
               <label htmlFor={`${uid}-feedback`} className="text-sm font-medium text-slate-900">
                 What should change?
               </label>
-              <span className="font-mono text-[10.5px] text-slate-400 tabular-nums" aria-hidden>
+              <span className="font-mono text-2xs text-slate-500 tabular-nums" aria-hidden>
                 {text.length}/{MAX_FEEDBACK}
               </span>
             </div>
@@ -332,15 +339,15 @@ export function ReviewPanel({
           </div>
 
           <div>
-            <p className="mb-1.5 text-xs text-slate-500">Quick add</p>
-            <div className="flex flex-wrap gap-1.5">
+            <p className="mb-2 text-xs text-slate-500">Quick add</p>
+            <div className="flex flex-wrap gap-2">
               {(QUICK[chosen ?? "all"] ?? QUICK.all).map((q) => (
                 <button
                   key={q}
                   type="button"
                   onClick={() => addQuick(q)}
                   className={cx(
-                    "inline-flex min-h-7 items-center rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-800",
+                    "inline-flex min-h-7 items-center rounded-md border border-dashed border-slate-300 px-2 py-1 text-xs text-slate-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-800",
                     tap,
                   )}
                 >
@@ -369,7 +376,7 @@ export function ReviewPanel({
             className="animate-enter space-y-3 py-1"
             aria-labelledby={`${uid}-reject-title`}
           >
-            <div className="flex gap-2.5">
+            <div className="flex gap-2">
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
                 <Icon name="alert" className="h-3.5 w-3.5" />
               </span>
@@ -394,14 +401,14 @@ export function ReviewPanel({
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
                 placeholder="e.g. Wrong company, or the evidence is too thin to act on."
-                className="mt-1.5 w-full resize-y rounded-xl border border-slate-300 bg-surface px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/15 focus:outline-none"
+                className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-surface px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/15 focus:outline-none"
               />
             </div>
             <div className="flex gap-2">
               <button
                 type="submit"
                 className={cx(
-                  "inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-rose-600 px-4 py-2.5 text-sm font-semibold whitespace-nowrap text-white transition-colors hover:bg-rose-700",
+                  "inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold whitespace-nowrap text-white transition-colors hover:bg-rose-700",
                   tap,
                 )}
               >
@@ -422,7 +429,7 @@ export function ReviewPanel({
               setRejecting(true);
             }}
             className={cx(
-              "inline-flex w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700",
+              "inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700",
               tap,
             )}
           >
@@ -449,7 +456,7 @@ function History({ items, ns }: { items: ReviewEntry[]; ns: string }) {
   return (
     <div className="border-t border-slate-100 px-4 py-4">
       <p className={cx(monoLabel, "mb-3 text-slate-500")}>Review history</p>
-      <ol className="relative space-y-3.5">
+      <ol className="relative space-y-4">
         <span aria-hidden className="absolute top-2 bottom-2 left-[0.6875rem] w-px bg-slate-200" />
         {items.map((h, i) => {
           const st = ACTION_STYLE[h.action] ?? ACTION_STYLE.revise;
@@ -463,7 +470,7 @@ function History({ items, ns }: { items: ReviewEntry[]; ns: string }) {
                 <Icon name={st.icon} className="h-3 w-3" strokeWidth={3} />
               </span>
               <div className="min-w-0 flex-1 pt-px">
-                <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <span className={cx("font-medium", st.text)}>{ACTION_LABEL[h.action] ?? h.action}</span>
                   <span className="text-xs text-slate-500">{onDraft(h.revision)}</span>
                   {h.pending && <span className="text-xs text-slate-500">· sending</span>}
@@ -473,13 +480,13 @@ function History({ items, ns }: { items: ReviewEntry[]; ns: string }) {
                     <a
                       href={`#${ns}-${sec.block}`}
                       title={`Go to ${sec.label}`}
-                      className="mt-1 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-800"
+                      className="mt-1 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-2xs font-medium text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-800"
                     >
                       <Icon name="target" className="h-3 w-3" />
                       {sec.label}
                     </a>
                   ) : (
-                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-2xs font-medium text-slate-700">
                       <Icon name="target" className="h-3 w-3" />
                       {sectionLabel(h.section)}
                     </span>

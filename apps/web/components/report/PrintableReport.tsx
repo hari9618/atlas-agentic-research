@@ -1,14 +1,20 @@
+"use client";
+
+import { createContext, useContext } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ResearchPayload } from "@/lib/api";
 import {
   chipLabel,
+  type CitationNumbers,
   citationKey,
   hasText,
   linkCitationsInMarkdown,
   nonEmpty,
   splitCitations,
 } from "@/lib/citations";
+import { briefLine } from "@/lib/persona";
+import { reportCitationNumbers } from "@/lib/report-citations";
 import { titleCase } from "@/components/ui/styles";
 import { confidenceLabel } from "./ConfidenceMeter";
 
@@ -45,8 +51,12 @@ function Tag({ value, suffix = "" }: { value?: string; suffix?: string }) {
   );
 }
 
-/** Citation labels become small grey source tags, e.g. "[SEC 1]". */
+// The report's citation numbering, read by every source tag in the paper version.
+const Nums = createContext<CitationNumbers | undefined>(undefined);
+
+/** Citation labels become small grey source tags, e.g. "[Site 3]". */
 function P({ text }: { text?: string }) {
+  const nums = useContext(Nums);
   if (!text) return null;
   return (
     <>
@@ -55,7 +65,7 @@ function P({ text }: { text?: string }) {
           <span key={i}>{s.text}</span>
         ) : (
           <span key={i} className="text-[7.5pt] whitespace-nowrap text-[#64748b]">
-            {" "}[{chipLabel(s.key)}]
+            {" "}[{chipLabel(s.key, nums)}]
           </span>
         ),
       )}
@@ -106,7 +116,7 @@ const MD: Components = {
 };
 
 const th = "border-b border-[#cbd5e1] py-1 pr-3 text-left text-[8pt] font-semibold text-[#64748b]";
-const td = "border-b border-[#e2e8f0] py-1.5 pr-3 align-top text-[9pt] leading-[1.45] text-[#334155]";
+const td = "border-b border-[#e2e8f0] py-2 pr-3 align-top text-[9pt] leading-[1.45] text-[#334155]";
 
 export function PrintableReport({
   query,
@@ -125,20 +135,32 @@ export function PrintableReport({
   const pct = conf == null ? null : Math.round(Math.max(0, Math.min(1, conf)) * 100);
   const confInfo = conf == null ? null : confidenceLabel(conf);
   const uncertainties = s?.uncertainties?.length ? s.uncertainties : payload.uncertainties ?? [];
+  const nums = reportCitationNumbers(payload);
+  const rank = (c: string) => nums.get(citationKey(c)) ?? Number.MAX_SAFE_INTEGER;
   const seen = new Set<string>();
   const sources = (payload.citations ?? []).filter((x) => {
     const k = citationKey(x.citation ?? "");
     if (!x.citation || seen.has(k)) return false;
     seen.add(k);
     return true;
-  });
+  }).sort((a, b) => rank(a.citation) - rank(b.citation));
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const who = briefLine(s?.brief);
+  const strengths = (s?.strengths ?? []).filter(hasText);
+  const weaknesses = (s?.weaknesses ?? []).filter(hasText);
+  const mirrored = strengths.length > 0 || weaknesses.length > 0;
+  const facts = (s?.snapshot ?? []).filter((f) => hasText(f?.label) && hasText(f?.value));
+  const plans = (s?.pricing?.plans ?? []).filter((x) => hasText(x?.name) || hasText(x?.price));
+  const h2h = s?.head_to_head;
+  const h2hRows = (h2h?.rows ?? []).filter((r) => hasText(r?.dimension));
+  const answers = (s?.custom_answers ?? []).filter((a) => hasText(a?.question) && hasText(a?.answer));
 
   return (
+    <Nums.Provider value={nums}>
     <div className="print-only bg-surface text-[#0f172a]">
       {/* Masthead */}
       <header className="border-b-[3px] border-[#3730a3] pb-3">
-        <div className="flex items-center justify-between text-[8pt] font-semibold tracking-[0.18em] text-[#64748b] uppercase">
+        <div className="flex items-center justify-between text-[8pt] font-semibold tracking-label text-[#64748b] uppercase">
           <span>Atlas · Due-diligence brief</span>
           <span>{date}</span>
         </div>
@@ -147,6 +169,13 @@ export function PrintableReport({
             <h1 className="font-display text-[26pt] leading-tight font-normal">
               {s?.company || payload.target || "Research brief"}
             </h1>
+            {(who || hasText(s?.brief?.goal)) && (
+              <p className="mt-1 text-[9pt] text-[#475569]">
+                {who}
+                {who && hasText(s?.brief?.goal) && " · "}
+                {s?.brief?.goal}
+              </p>
+            )}
             {s?.headline && (
               <p className="mt-1 text-[11pt] leading-[1.45] text-[#334155]">
                 <P text={s.headline} />
@@ -176,12 +205,92 @@ export function PrintableReport({
 
       {s ? (
         <>
+          {(hasText(s.verdict?.recommendation) || hasText(s.verdict?.answer)) && (
+            <section className="avoid-break mt-4 border-l-[3px] border-[#3730a3] pl-3">
+              <h2 className="text-[8.5pt] font-bold tracking-wider text-[#3730a3] uppercase">Verdict</h2>
+              {hasText(s.verdict?.recommendation) && (
+                <p className="mt-1 text-[12pt] leading-snug font-semibold text-[#0f172a]">
+                  <P text={s.verdict?.recommendation} />
+                </p>
+              )}
+              <Para text={s.verdict?.answer} />
+            </section>
+          )}
+
+          {facts.length > 0 && (
+            <section className="avoid-break">
+              <H2>Snapshot</H2>
+              <div className="grid grid-cols-3 gap-x-4">
+                {facts.map((f, i) => (
+                  <div key={i} className="flex justify-between gap-2 border-b border-[#e2e8f0] py-1 text-[9pt]">
+                    <span className="text-[#64748b]">{f.label}</span>
+                    <span className="text-right font-semibold text-[#0f172a]">
+                      <P text={f.value} />
+                      {f.citation && <P text={` ${f.citation}`} />}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {nonEmpty(s.executive_summary) && (
             <section className="avoid-break mt-4 rounded-md border border-[#c7d2fe] bg-[#eef2ff] p-3">
-              <h2 className="mb-1.5 text-[10.5pt] font-bold tracking-wider text-[#3730a3] uppercase">
+              <h2 className="mb-2 text-[10.5pt] font-bold tracking-wider text-[#3730a3] uppercase">
                 Executive summary
               </h2>
               <Bullets items={s.executive_summary} />
+            </section>
+          )}
+
+          {h2h && hasText(h2h.asker) && (hasText(h2h.summary) || h2hRows.length > 0) && (
+            <section>
+              <H2>
+                {s.company || "Them"} vs {h2h.asker}
+              </H2>
+              {hasText(h2h.overlap) && (
+                <p className="mb-1 text-[9pt] font-semibold text-[#0f172a]">
+                  {h2h.overlap?.toLowerCase() === "none" ? "Not a direct competitor" : `${titleCase(h2h.overlap)} overlap`}
+                </p>
+              )}
+              <Para text={h2h.summary} />
+              {h2hRows.length > 0 && (
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Dimension</th>
+                      <th className={th}>{s.company || "Them"}</th>
+                      <th className={th}>{h2h.asker}</th>
+                      <th className={th}>Edge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {h2hRows.map((r, i) => (
+                      <tr key={i} className="avoid-break">
+                        <td className={`${td} font-semibold text-[#0f172a]`}>{r.dimension}</td>
+                        <td className={td}><P text={r.subject} /></td>
+                        <td className={td}><P text={r.asker} /></td>
+                        <td className={td}>
+                          {r.edge === "subject" ? s.company : r.edge === "asker" ? h2h.asker : r.edge === "even" ? "Even" : ""}
+                          {r.citation && <P text={` ${r.citation}`} />}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          )}
+
+          {answers.length > 0 && (
+            <section>
+              <H2>Your questions</H2>
+              {answers.map((a, i) => (
+                <div key={i} className="avoid-break mb-2">
+                  <p className="text-[9.5pt] font-semibold text-[#0f172a]">{a.question}</p>
+                  <Para text={a.citation ? `${a.answer} ${a.citation}` : a.answer} />
+                </div>
+              ))}
             </section>
           )}
 
@@ -201,13 +310,40 @@ export function PrintableReport({
             </section>
           )}
 
+          {(hasText(s.pricing?.summary) || plans.length > 0) && (
+            <section>
+              <H2>Pricing</H2>
+              <Para text={s.pricing?.summary} />
+              {plans.length > 0 && (
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Plan</th>
+                      <th className={th}>Price</th>
+                      <th className={th}>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plans.map((x, i) => (
+                      <tr key={i} className="avoid-break">
+                        <td className={`${td} font-semibold text-[#0f172a]`}>{x.name}</td>
+                        <td className={td}>{hasText(x.price) ? x.price : "Price not public"}</td>
+                        <td className={td}><P text={x.citation ? `${x.notes ?? ""} ${x.citation}` : x.notes} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          )}
+
           {s.financials && (nonEmpty(s.financials.metrics) || hasText(s.financials.summary)) && (
             <section>
               <H2>Financials</H2>
               {nonEmpty(s.financials.metrics) && (
                 <div className="avoid-break mb-2 grid grid-cols-4 gap-2">
                   {s.financials.metrics.map((m, i) => (
-                    <div key={i} className="rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5">
+                    <div key={i} className="rounded-md border border-[#e2e8f0] bg-[#f8fafc] px-2 py-2">
                       <div className="text-[7.5pt] text-[#64748b]">{m.label}</div>
                       <div className="text-[13pt] font-bold">{m.value}</div>
                       <div className="text-[7.5pt] text-[#334155]">
@@ -222,18 +358,38 @@ export function PrintableReport({
             </section>
           )}
 
-          {s.market_position && (
+          {mirrored && (
+            <section>
+              <H2>Strengths and weaknesses</H2>
+              <div className="avoid-break grid grid-cols-2 gap-3">
+                {strengths.length > 0 && (
+                  <div>
+                    <h3 className="mb-1 text-[9pt] font-bold text-[#047857]">Strengths</h3>
+                    <Bullets items={strengths} />
+                  </div>
+                )}
+                {weaknesses.length > 0 && (
+                  <div>
+                    <h3 className="mb-1 text-[9pt] font-bold text-[#be123c]">Weaknesses &amp; red flags</h3>
+                    <Bullets items={weaknesses} />
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {s.market_position && (hasText(s.market_position.summary) || !mirrored) && (
             <section>
               <H2>Market position</H2>
               <Para text={s.market_position.summary} />
               <div className="avoid-break grid grid-cols-2 gap-3">
-                {nonEmpty(s.market_position.strengths) && (
+                {!mirrored && nonEmpty(s.market_position.strengths) && (
                   <div>
                     <h3 className="mb-1 text-[9pt] font-bold text-[#047857]">Strengths</h3>
                     <Bullets items={s.market_position.strengths} />
                   </div>
                 )}
-                {nonEmpty(s.market_position.weaknesses) && (
+                {!mirrored && nonEmpty(s.market_position.weaknesses) && (
                   <div>
                     <h3 className="mb-1 text-[9pt] font-bold text-[#be123c]">Weaknesses</h3>
                     <Bullets items={s.market_position.weaknesses} />
@@ -272,7 +428,7 @@ export function PrintableReport({
           {nonEmpty(s.recent_developments) && (
             <section>
               <H2>Recent developments</H2>
-              <ul className="space-y-1.5">
+              <ul className="space-y-2">
                 {s.recent_developments.map((d, i) => (
                   <li key={i} className="avoid-break text-[9.5pt] leading-[1.5] text-[#334155]">
                     <span className="font-semibold text-[#0f172a]">
@@ -288,7 +444,11 @@ export function PrintableReport({
             </section>
           )}
 
-          {s.sentiment && (hasText(s.sentiment.summary) || hasText(s.sentiment.overall)) && (
+          {s.sentiment &&
+            (hasText(s.sentiment.summary) ||
+              hasText(s.sentiment.overall) ||
+              nonEmpty(s.sentiment.praise) ||
+              nonEmpty(s.sentiment.complaints)) && (
             <section>
               <H2>Overall sentiment</H2>
               {s.sentiment.overall && (
@@ -297,6 +457,20 @@ export function PrintableReport({
                 </p>
               )}
               <Para text={s.sentiment.summary} />
+              <div className="avoid-break grid grid-cols-2 gap-3">
+                {nonEmpty(s.sentiment.praise) && (
+                  <div>
+                    <h3 className="mb-1 text-[9pt] font-bold text-[#047857]">What customers praise</h3>
+                    <Bullets items={s.sentiment.praise} />
+                  </div>
+                )}
+                {nonEmpty(s.sentiment.complaints) && (
+                  <div>
+                    <h3 className="mb-1 text-[9pt] font-bold text-[#be123c]">What customers complain about</h3>
+                    <Bullets items={s.sentiment.complaints} />
+                  </div>
+                )}
+              </div>
             </section>
           )}
 
@@ -328,11 +502,11 @@ export function PrintableReport({
             <section>
               <H2>Bull case vs bear case</H2>
               <div className="avoid-break grid grid-cols-2 gap-3">
-                <div className="rounded-md border border-[#a7f3d0] bg-[#ecfdf5] p-2.5">
+                <div className="rounded-md border border-[#a7f3d0] bg-[#ecfdf5] p-2">
                   <h3 className="mb-1 text-[9pt] font-bold text-[#047857]">Bull case</h3>
                   <Bullets items={s.bull_case} />
                 </div>
-                <div className="rounded-md border border-[#fecdd3] bg-[#fff1f2] p-2.5">
+                <div className="rounded-md border border-[#fecdd3] bg-[#fff1f2] p-2">
                   <h3 className="mb-1 text-[9pt] font-bold text-[#be123c]">Bear case</h3>
                   <Bullets items={s.bear_case} />
                 </div>
@@ -365,7 +539,7 @@ export function PrintableReport({
       ) : (
         <section className="mt-3">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD}>
-            {linkCitationsInMarkdown(payload.report ?? "", "print")}
+            {linkCitationsInMarkdown(payload.report ?? "", "print", nums)}
           </ReactMarkdown>
         </section>
       )}
@@ -385,7 +559,7 @@ export function PrintableReport({
           <ol className="space-y-0.5 text-[8.5pt] leading-[1.45] text-[#475569]">
             {sources.map((x, i) => (
               <li key={i}>
-                <span className="font-semibold text-[#334155]">[{chipLabel(citationKey(x.citation))}]</span>{" "}
+                <span className="font-semibold text-[#334155]">[{chipLabel(citationKey(x.citation), nums)}]</span>{" "}
                 {x.citation.replace(/\s*\[(web|atlas-derived)\]/g, " (web)")}
               </li>
             ))}
@@ -399,5 +573,6 @@ export function PrintableReport({
         covers the claims. This is research support, not investment advice.
       </footer>
     </div>
+    </Nums.Provider>
   );
 }

@@ -1,4 +1,4 @@
-import { chipLabel, sourceAnchor, splitCitations } from "@/lib/citations";
+import { chipLabel, type CitationNumbers, sourceAnchor, splitCitations } from "@/lib/citations";
 import { cx } from "@/components/ui/styles";
 
 export type ChipTone = "light" | "dark";
@@ -14,11 +14,14 @@ export function SourceChip({
   label,
   sourceKey,
   ns,
+  nums,
   tone = "light",
 }: {
   label: string;
   sourceKey: string;
   ns: string;
+  /** The report's numbering; without it the chip shows only the source kind. */
+  nums?: CitationNumbers;
   tone?: ChipTone;
 }) {
   return (
@@ -27,17 +30,27 @@ export function SourceChip({
       title={label}
       aria-label={`Source: ${label}`}
       className={cx(
-        "mx-[0.2em] inline-flex -translate-y-px items-center rounded-[5px] border px-1.5 align-middle font-mono text-[10px] leading-[15px] font-medium tracking-tight whitespace-nowrap tabular-nums no-underline transition-colors duration-150",
+        "mx-[0.2em] inline-flex -translate-y-px items-center rounded-[5px] border px-2 align-middle font-mono text-2xs leading-[15px] font-medium tracking-tight whitespace-nowrap tabular-nums no-underline transition-colors duration-150",
         CHIP[tone],
       )}
     >
-      {chipLabel(sourceKey)}
+      {chipLabel(sourceKey, nums)}
     </a>
   );
 }
 
 /** Render report text with inline `[source#n]` labels turned into source chips. */
-export function Cited({ text, ns, tone = "light" }: { text: string | undefined; ns: string; tone?: ChipTone }) {
+export function Cited({
+  text,
+  ns,
+  nums,
+  tone = "light",
+}: {
+  text: string | undefined;
+  ns: string;
+  nums?: CitationNumbers;
+  tone?: ChipTone;
+}) {
   if (!text) return null;
   return (
     <>
@@ -45,7 +58,7 @@ export function Cited({ text, ns, tone = "light" }: { text: string | undefined; 
         s.type === "text" ? (
           <span key={i}>{s.text}</span>
         ) : (
-          <SourceChip key={i} label={s.label} sourceKey={s.key} ns={ns} tone={tone} />
+          <SourceChip key={i} label={s.label} sourceKey={s.key} ns={ns} nums={nums} tone={tone} />
         ),
       )}
     </>

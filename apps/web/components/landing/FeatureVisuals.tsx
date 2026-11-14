@@ -11,7 +11,7 @@ function Frame({ children, className }: { children: React.ReactNode; className?:
       aria-hidden
       className={cx(
         cardBase,
-        "border-slate-200/80 p-4 shadow-[0_12px_32px_-16px_rgb(15_23_42/0.18)] sm:p-5",
+        "border-slate-200/80 p-4 sm:p-5",
         !className?.includes("bg-") && "bg-surface",
         className,
       )}
@@ -51,7 +51,7 @@ export function SourcesVisual() {
 
 function MockChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mx-0.5 inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 text-[10.5px] leading-4 font-medium text-slate-500">
+    <span className="mx-0.5 inline-flex items-center rounded border border-slate-200 bg-slate-50 px-2 text-2xs leading-4 font-medium text-slate-500">
       {children}
     </span>
   );
@@ -101,19 +101,19 @@ export function ReviewVisual() {
       <p className="text-xs font-semibold tracking-wider text-indigo-600 uppercase">Your review</p>
       <p className="mt-1 text-base font-semibold text-slate-900">Is this report ready?</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-accent-400 px-3 py-2 text-sm font-semibold text-ink-950">
+        <span className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent-400 px-3 py-2 text-sm font-medium text-ink-950">
           <Icon name="check" /> Approve
         </span>
-        <span className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800">
+        <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800">
           <Icon name="edit" /> Request changes
         </span>
       </div>
       <div className="mt-3 rounded-lg border border-slate-300 p-3 text-sm text-slate-700">
         Go deeper on how they compare with Aster Dynamics.
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-2">
         {["More on competitors", "Deeper financials", "Focus on risks"].map((c) => (
-          <span key={c} className="rounded-full border border-slate-300 px-2.5 py-1 text-xs text-slate-700">
+          <span key={c} className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700">
             + {c}
           </span>
         ))}
@@ -132,7 +132,7 @@ export function CompetitorsVisual() {
       <p className="mb-3 text-xs font-semibold tracking-wide text-slate-500 uppercase">Competitors</p>
       <ul className="divide-y divide-slate-100">
         {rows.map(([n, d, t]) => (
-          <li key={n} className="flex items-center justify-between gap-3 py-2.5">
+          <li key={n} className="flex items-center justify-between gap-3 py-2">
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-slate-900">{n}</span>
               <span className="block truncate text-xs text-slate-500">{d}</span>
@@ -144,8 +144,8 @@ export function CompetitorsVisual() {
         ))}
       </ul>
       <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
-        <div className="rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-800">Strength: recurring software</div>
-        <div className="rounded-lg bg-rose-50 p-2.5 text-xs text-rose-800">Weakness: customer concentration</div>
+        <div className="rounded-lg bg-emerald-50 p-2 text-xs text-emerald-800">Strength: recurring software</div>
+        <div className="rounded-lg bg-rose-50 p-2 text-xs text-rose-800">Weakness: customer concentration</div>
       </div>
     </Frame>
   );
@@ -158,13 +158,13 @@ export function PdfVisual() {
         <div className="border-b-2 border-indigo-700 pb-2">
           <p className="text-[9px] font-semibold tracking-widest text-slate-500 uppercase">Atlas · Due-diligence brief</p>
           <p className="mt-1 text-sm font-bold text-slate-900">Helios Robotics</p>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="rounded-full bg-amber-50 px-1.5 text-[9px] font-semibold text-amber-800">Neutral</span>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="rounded-md bg-amber-50 px-2 text-[9px] font-semibold text-amber-800">Neutral</span>
             <span className="text-[9px] text-slate-500">Confidence 62/100</span>
           </div>
         </div>
         {["Executive summary", "Financials", "Key risks", "Sources"].map((h) => (
-          <div key={h} className="mt-2.5">
+          <div key={h} className="mt-2">
             <p className="text-[9px] font-bold tracking-wider text-indigo-800 uppercase">{h}</p>
             <div className="mt-1 space-y-1">
               <div className="h-1.5 w-full rounded bg-slate-100" />

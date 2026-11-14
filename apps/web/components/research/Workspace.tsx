@@ -19,15 +19,18 @@ import {
   startResearch,
   type StreamHandlers,
 } from "@/lib/api";
+import { isGuest } from "@/lib/auth-common";
+import { getUser, redirectToLogin } from "@/lib/auth";
 import { reviewableSections, sectionDef } from "@/lib/review";
 import { SAMPLE_PAYLOAD, SAMPLE_QUERY } from "@/lib/sample-report";
+import { GuestBanner } from "@/components/auth/GuestBanner";
 import { ExportButton } from "@/components/report/ExportButton";
 import { PrintableReport } from "@/components/report/PrintableReport";
 import { StructuredReport } from "@/components/report/StructuredReport";
 import { Badge } from "@/components/ui/Badge";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Spinner } from "@/components/ui/Spinner";
-import { btn, cardBase, cx, eyebrow, limePill, monoLabel, surface, tap } from "@/components/ui/styles";
+import { btn, cardBase, cx, limePill, monoLabel, surface, tap } from "@/components/ui/styles";
 import { CorpusPanel } from "./CorpusPanel";
 import { describeFailure, type Recovery, type RunError } from "./failure";
 import {
@@ -218,7 +221,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
     if (token !== tokenRef.current || f.kind === "aborted") return;
     const op = lastOpRef.current;
     const during = op.kind === "start" ? "start" : "resume";
-    const e = describeFailure(f, during);
+    const e = describeFailure(f, during, { guest: isGuest(getUser()) });
     cancelRef.current = null;
     setError(e);
     setErrorDuring(during);
@@ -452,7 +455,9 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
 
   function recover(r: Recovery) {
     const op = lastOpRef.current;
-    if (r === "retry") {
+    if (r === "signin") {
+      redirectToLogin();
+    } else if (r === "retry") {
       if (op.kind === "start") run(op.query || asked || query);
       else resume(op.action, op.feedback, op.section);
     } else if (r === "back") {
@@ -539,6 +544,8 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
   return (
     <>
       <div className={cx("screen-only space-y-6", showMobileBar && "pb-28 lg:pb-0")}>
+        {(!compact || approved || rejected) && <GuestBanner />}
+
         <QueryBox
           query={query}
           setQuery={setQuery}
@@ -553,7 +560,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
         {!online && compact && (
           <p
             role="status"
-            className="flex animate-enter items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800"
+            className="flex animate-enter items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800"
           >
             <Icon name="alert" className="h-4 w-4 shrink-0 text-amber-600" />
             You&apos;re offline. Your work is safe here; reconnect to continue.
@@ -583,7 +590,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
             aside={
               <section aria-labelledby="sample-rail-title" className={cx(surface, "p-4")}>
                 <p className={cx(monoLabel, "text-indigo-600")}>Sample brief</p>
-                <h2 id="sample-rail-title" className="mt-2 text-[15px] font-semibold text-slate-950">
+                <h2 id="sample-rail-title" className="mt-2 text-base font-semibold text-slate-950">
                   Helios Robotics, from the demo documents
                 </h2>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600">
@@ -710,7 +717,7 @@ export function Workspace({ initialQuery = "" }: { initialQuery?: string }) {
               </button>
             </div>
           ) : (
-            <p role="status" className="flex min-h-11 items-center gap-2.5 text-sm font-medium text-slate-800">
+            <p role="status" className="flex min-h-11 items-center gap-2 text-sm font-medium text-slate-800">
               <Spinner className="h-4 w-4 text-indigo-600" />
               <span className="min-w-0 truncate">{HEADLINE[phase]}</span>
               <span className="ml-auto font-mono text-xs text-slate-500 tabular-nums">{clock(elapsed)}</span>
@@ -744,6 +751,7 @@ const RECOVERY_LABEL: Record<Recovery, { text: string; icon?: IconName }> = {
   back: { text: "Back to the draft" },
   new: { text: "Start new research", icon: "arrowRight" },
   edit: { text: "Edit question", icon: "edit" },
+  signin: { text: "Sign in again", icon: "arrowRight" },
 };
 
 /** A failure, said plainly, with the right way out as the primary button. */
@@ -833,7 +841,7 @@ function ReportSkeleton() {
         Your brief takes shape here as soon as the writer finishes.
       </p>
       <div aria-hidden className="space-y-4">
-        <div className="rounded-2xl bg-ink-950 p-6 ring-1 ring-ink-700/70 sm:p-8">
+        <div className="rounded-xl bg-ink-950 p-6 ring-1 ring-ink-700/70 sm:p-8">
           <div className={cx(bar, "h-3 w-40 bg-white/10")} />
           <div className={cx(bar, "mt-6 h-10 w-2/3 max-w-md bg-white/10")} />
           <div className={cx(bar, "mt-4 h-3 w-full max-w-2xl bg-white/[0.07]")} />
@@ -860,46 +868,22 @@ function ReportSkeleton() {
 }
 
 function EmptyState({ onSample }: { onSample: () => void }) {
-  const steps: [IconName, string, string][] = [
-    ["target", "Plan", "Atlas scopes your question and picks what to research."],
-    ["users", "Research", "Four analysts cover financials, news, market and risk in parallel."],
-    ["scale", "Debate", "A bull and a bear argue both sides of the evidence."],
-    ["check", "Review", "You approve the cited draft, send it back with changes, or reject it."],
-  ];
   return (
-    <section aria-labelledby="empty-title" className={cx(surface, "animate-enter p-5 sm:p-7")}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className={eyebrow}>What happens next</p>
-          <h2 id="empty-title" className="mt-2 text-lg font-semibold tracking-tight text-slate-950">
-            Four steps from question to reviewed brief
-          </h2>
-        </div>
-        <span className="font-mono text-xs text-slate-500">~2 min per run</span>
+    <section aria-labelledby="empty-title" className={cx(surface, "flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:p-6")}>
+      <div className="min-w-0 flex-1">
+        <h2 id="empty-title" className="text-sm font-semibold text-slate-950">
+          What you get
+        </h2>
+        <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-slate-600">
+          A brief that answers your question first, then shows the evidence: quick facts, strengths and weaknesses,
+          pricing, customer sentiment, risks and both sides of the case. You review it before it&apos;s final. About
+          two minutes per run.
+        </p>
       </div>
-      <ol className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {steps.map(([icon, t, d], i) => (
-          <li key={t} className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4">
-            <div className="flex items-center justify-between">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface text-indigo-700 shadow-xs ring-1 ring-slate-200">
-                <Icon name={icon} className="h-4.5 w-4.5" />
-              </span>
-              <span aria-hidden className="font-display text-2xl text-slate-300">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-            </div>
-            <p className="mt-4 text-sm font-semibold text-slate-950">{t}</p>
-            <p className="mt-1 text-sm leading-relaxed text-slate-600">{d}</p>
-          </li>
-        ))}
-      </ol>
-      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-5">
-        <button type="button" onClick={onSample} className={cx(btn.secondary, tap)}>
-          <Icon name="file" />
-          Preview a sample report
-        </button>
-        <span className="text-xs text-slate-500">Progress streams in live as each analyst finishes.</span>
-      </div>
+      <button type="button" onClick={onSample} className={cx(btn.secondary, "shrink-0", tap)}>
+        <Icon name="file" />
+        Preview a sample brief
+      </button>
     </section>
   );
 }

@@ -77,10 +77,10 @@ export function ReportToc({
         stickyClass,
       )}
     >
-      <p className="mb-3 hidden font-mono text-[10.5px] font-medium tracking-[0.16em] text-slate-400 uppercase @4xl:block">
+      <p className="mb-3 hidden font-mono text-2xs font-medium tracking-label text-slate-500 uppercase @4xl:block">
         On this page
       </p>
-      <div className="overflow-hidden rounded-full border border-slate-200/80 bg-surface/90 p-1 shadow-[0_10px_30px_-14px_rgb(15_23_42/0.35)] backdrop-blur-md @4xl:overflow-visible @4xl:rounded-none @4xl:border-0 @4xl:bg-transparent @4xl:p-0 @4xl:shadow-none @4xl:backdrop-blur-none">
+      <div className="overflow-hidden rounded-lg border border-slate-200/80 bg-surface/95 p-1 backdrop-blur-md @4xl:overflow-visible @4xl:rounded-none @4xl:border-0 @4xl:bg-transparent @4xl:p-0 @4xl:backdrop-blur-none">
         <ol
           ref={listRef}
           className="relative flex gap-1 overflow-x-auto [scrollbar-width:none] @4xl:flex-col @4xl:gap-0 @4xl:overflow-visible @4xl:border-l @4xl:border-slate-200 [&::-webkit-scrollbar]:hidden"
@@ -95,24 +95,13 @@ export function ReportToc({
                   aria-current={current ? "location" : undefined}
                   onClick={() => setActive(item.id)}
                   className={cx(
-                    "flex items-baseline gap-2 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
-                    "@4xl:-ml-px @4xl:rounded-none @4xl:border-l-2 @4xl:py-[0.45rem] @4xl:pr-0 @4xl:pl-3.5 @4xl:text-[13px] @4xl:whitespace-normal",
+                    "flex items-baseline gap-2 rounded-md px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors",
+                    "@4xl:-ml-px @4xl:rounded-none @4xl:border-l-2 @4xl:py-[0.45rem] @4xl:pr-0 @4xl:pl-4 @4xl:text-sm @4xl:whitespace-normal",
                     current
                       ? "bg-slate-900 text-surface @4xl:border-indigo-600 @4xl:bg-transparent @4xl:text-slate-950"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 @4xl:border-transparent @4xl:text-slate-500 @4xl:hover:border-slate-300 @4xl:hover:bg-transparent",
                   )}
                 >
-                  {item.n != null && (
-                    <span
-                      aria-hidden
-                      className={cx(
-                        "hidden font-mono text-[10px] tabular-nums @4xl:inline",
-                        current ? "text-indigo-600" : "text-slate-400",
-                      )}
-                    >
-                      {String(item.n).padStart(2, "0")}
-                    </span>
-                  )}
                   {item.label}
                 </a>
               </li>

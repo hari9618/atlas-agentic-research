@@ -18,7 +18,7 @@ export function Badge({
   return (
     <span
       className={cx(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset",
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset",
         surface === "dark" ? toneBadgeDark[tone] : toneBadge[tone],
         className,
       )}

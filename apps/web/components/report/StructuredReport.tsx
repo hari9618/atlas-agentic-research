@@ -1,6 +1,8 @@
 import { Fragment } from "react";
 import type { ReportSections, ResearchPayload } from "@/lib/api";
 import { hasText, nonEmpty } from "@/lib/citations";
+import { briefKind } from "@/lib/persona";
+import { reportCitationNumbers } from "@/lib/report-citations";
 import { cx, surface } from "@/components/ui/styles";
 import { EvidenceDebate } from "./EvidenceDebate";
 import { MarkdownReport } from "./MarkdownReport";
@@ -12,18 +14,45 @@ import { BullBear, hasCases, hasOutlook, Outlook, Uncertainties } from "./sectio
 import { Financials, hasFinancials } from "./sections/Financials";
 import { Competitors, hasCompetitors, hasMarketPosition, MarketPosition } from "./sections/Market";
 import { hasNews, NewsAndSentiment } from "./sections/News";
+import {
+  CustomAnswers,
+  hasCustomAnswers,
+  hasHeadToHead,
+  hasPricing,
+  hasSnapshot,
+  hasStrengthsWeaknesses,
+  hasVerdict,
+  HeadToHead,
+  Pricing,
+  Snapshot,
+  StrengthsWeaknesses,
+  Verdict,
+} from "./sections/Persona";
 import { CompanyOverview, ExecutiveSummary, hasCompanyOverview, hasExecutiveSummary } from "./sections/Overview";
 import { hasRisks, Risks } from "./sections/Risks";
 
 type Block = { id: string; label: string; render: (n: number) => React.ReactNode };
 
 /** The sections of a structured brief, in reading order, keeping only those with
- *  content. The same list drives the numbering and the table of contents. */
+ *  content. The same list drives the numbering and the table of contents. Order is the
+ *  reader's: the answer, the facts, the summary, what they asked, then the evidence. */
 function structuredBlocks(s: ReportSections, c: Ctx, uncertainties: string[]): Block[] {
+  const vs = hasHeadToHead(s) ? `vs ${s.head_to_head!.asker!.trim()}` : "Head to head";
   const all: (Block & { show: boolean })[] = [
+    { id: "verdict", label: "Verdict", show: hasVerdict(s), render: (n) => <Verdict s={s} c={c} n={n} /> },
+    { id: "snapshot", label: "Snapshot", show: hasSnapshot(s), render: (n) => <Snapshot s={s} c={c} n={n} /> },
     { id: "summary", label: "Executive summary", show: hasExecutiveSummary(s), render: (n) => <ExecutiveSummary s={s} c={c} n={n} /> },
+    { id: "head-to-head", label: vs, show: hasHeadToHead(s), render: (n) => <HeadToHead s={s} c={c} n={n} /> },
+    { id: "answers", label: "Your questions", show: hasCustomAnswers(s), render: (n) => <CustomAnswers s={s} c={c} n={n} /> },
     { id: "overview", label: "Company overview", show: hasCompanyOverview(s), render: (n) => <CompanyOverview s={s} c={c} n={n} /> },
+    { id: "pricing", label: "Pricing", show: hasPricing(s), render: (n) => <Pricing s={s} c={c} n={n} /> },
     { id: "financials", label: "Financials", show: hasFinancials(s), render: (n) => <Financials s={s} c={c} n={n} /> },
+    {
+      id: "strengths",
+      label: "Strengths & weaknesses",
+      show: hasStrengthsWeaknesses(s),
+      render: (n) => <StrengthsWeaknesses s={s} c={c} n={n} />,
+    },
     { id: "market", label: "Market position", show: hasMarketPosition(s), render: (n) => <MarketPosition s={s} c={c} n={n} /> },
     { id: "competitors", label: "Competitors", show: hasCompetitors(s), render: (n) => <Competitors s={s} c={c} n={n} /> },
     { id: "developments", label: "News & sentiment", show: hasNews(s), render: (n) => <NewsAndSentiment s={s} c={c} n={n} /> },
@@ -70,7 +99,8 @@ export function StructuredReport({
   flag?: Ctx["flag"];
   className?: string;
 }) {
-  const c: Ctx = { ns, hl: headingLevel, flag };
+  // One numbering per report, shared by every chip and the Sources list.
+  const c: Ctx = { ns, hl: headingLevel, flag, nums: reportCitationNumbers(payload) };
   const s = payload.report_sections;
   const uncertainties = s?.uncertainties?.length ? s.uncertainties : payload.uncertainties ?? [];
   const confidence = payload.confidence ?? s?.confidence ?? null;
@@ -89,7 +119,7 @@ export function StructuredReport({
                 label: "Full report",
                 render: (n: number) => (
                   <Section c={c} id="full-report" n={n} title="Full report" description="The analyst write-up, as drafted.">
-                    <MarkdownReport report={payload.report!} ns={ns} bare />
+                    <MarkdownReport report={payload.report!} ns={ns} nums={c.nums} bare />
                   </Section>
                 ),
               },
@@ -133,8 +163,10 @@ export function StructuredReport({
         <div className="min-w-0 space-y-4">
           {blocks.length > 0 && (
             <article aria-label={`${company} brief`} className={cx(surface, "@container overflow-hidden")}>
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-200/70 bg-slate-50/60 px-5 py-2.5 font-mono text-[10.5px] tracking-[0.14em] text-slate-500 uppercase @2xl:px-10">
-                <span className="min-w-0 truncate">Investor brief · {company}</span>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-200/70 bg-slate-50/60 px-5 py-2 font-mono text-2xs tracking-label text-slate-500 uppercase @2xl:px-10">
+                <span className="min-w-0 truncate">
+                  {briefKind(s?.brief)} · {company}
+                </span>
                 <span className="tabular-nums">
                   {blocks.length} section{blocks.length === 1 ? "" : "s"}
                   {sources.length > 0 && ` · ${sources.length} source${sources.length === 1 ? "" : "s"}`}

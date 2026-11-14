@@ -3,20 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ApiFailure,
+  approveExperiment,
   ensureAwake,
   type Experiment,
+  getExperiments,
   getLlmOpsOverview,
+  isPending,
+  rejectExperiment,
   type LlmOpsOverview,
   type RecentRun,
   rollbackComponent,
   runImprovementExperiment,
 } from "@/lib/api";
+import { isAdmin } from "@/lib/auth-common";
+import { useSession } from "@/lib/use-session";
 import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
 import { IndeterminateBar, Spinner } from "@/components/ui/Spinner";
-import { btn, cx, eyebrow, monoLabel, surface, tap, type ToneKey } from "@/components/ui/styles";
+import { btn, cx, monoLabel, surface, tap, type ToneKey } from "@/components/ui/styles";
 import { ComponentCard } from "./ComponentCard";
 import { ExperimentCard } from "./ExperimentCard";
+import { type Decision, PendingApprovals } from "./PendingApprovals";
 import { fmtScore, fullDate, humanize, pct, timeAgo } from "./format";
 
 type Load =
@@ -38,6 +45,11 @@ const STAGES: { at: number; text: string }[] = [
 
 function failureCopy(f: ApiFailure): { title: string; body: string } {
   if (f.kind === "offline") return { title: "You're offline", body: "Reconnect, then try again." };
+  if (f.kind === "forbidden")
+    return { title: "Admins only", body: "Running experiments and rolling back policies is limited to administrators." };
+  if (f.kind === "rate_limited") return { title: "Slow down a little", body: f.message };
+  if (f.kind === "busy") return { title: "Atlas is at capacity right now", body: f.message };
+  if (f.kind === "unauthenticated") return { title: "Your session has ended", body: "Sign in again to continue." };
   if (f.status === 404)
     return {
       title: "The learning loop isn't available on this server yet",
@@ -50,6 +62,20 @@ function failureCopy(f: ApiFailure): { title: string; body: string } {
     };
   if (f.kind === "timeout") return { title: "That took too long", body: "The server didn't finish in time. Try again." };
   return { title: "Something went wrong", body: f.message };
+}
+
+/** The experiments endpoint is the source of truth for status (it knows about changes
+ *  awaiting approval); the overview may carry richer fields. Merge by id. */
+function mergeExperiments(overview: LlmOpsOverview, live: Experiment[]): LlmOpsOverview {
+  const byId = new Map(live.map((e) => [e.id, e]));
+  const merged = overview.experiments.map((e) => {
+    const l = byId.get(e.id);
+    byId.delete(e.id);
+    return l ? { ...e, ...l, change: { ...e.change, ...l.change } } : e;
+  });
+  const extra = [...byId.values()];
+  const experiments = [...extra, ...merged].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  return { ...overview, experiments };
 }
 
 const QUALITY_TONE: Record<string, ToneKey> = { good: "good", ok: "mid", poor: "bad" };
@@ -71,6 +97,8 @@ export function LearningDashboard() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const [rollingBack, setRollingBack] = useState<string | null>(null);
   const improvingRef = useRef(false);
+  const { status, user } = useSession();
+  const admin = isAdmin(user);
 
   const fetchOverview = useCallback(async (signal?: AbortSignal) => {
     const wake = await ensureAwake({
@@ -78,7 +106,11 @@ export function LearningDashboard() {
       onSlow: () => setLoad((l) => (l.status === "loading" ? { status: "loading", waking: true } : l)),
     });
     if (!wake.ok) return { ok: false as const, failure: wake.failure };
-    return getLlmOpsOverview(signal);
+    // The experiments list is optional extra detail: an older API without it (404) or
+    // a hiccup there must not blank the dashboard.
+    const [overview, live] = await Promise.all([getLlmOpsOverview(signal), getExperiments(signal)]);
+    if (!overview.ok) return overview;
+    return { ok: true as const, data: live.ok ? mergeExperiments(overview.data, live.data) : overview.data };
   }, []);
 
   useEffect(() => {
@@ -107,7 +139,7 @@ export function LearningDashboard() {
   }, [improving, improveStart]);
 
   async function improve() {
-    if (improvingRef.current) return;
+    if (improvingRef.current || !admin) return;
     improvingRef.current = true;
     setImproving(true);
     setImproveStart(Date.now());
@@ -168,6 +200,21 @@ export function LearningDashboard() {
     refresh({ quiet: true });
   }
 
+  async function decide(exp: Experiment, decision: Decision) {
+    setNotice(null);
+    const label = labelOf(exp.component);
+    if (decision === "approve") {
+      const r = await approveExperiment(exp.id);
+      if (!r.ok) return setNotice({ tone: "bad", ...failureCopy(r.failure) });
+      setNotice({ tone: "good", title: `${label} updated`, body: `The approved change is live as v${r.data.version}.` });
+    } else {
+      const r = await rejectExperiment(exp.id);
+      if (!r.ok) return setNotice({ tone: "bad", ...failureCopy(r.failure) });
+      setNotice({ tone: "info", title: "Change rejected", body: `${label} keeps its current policy.` });
+    }
+    await refresh({ quiet: true });
+  }
+
   useEffect(() => {
     if (!highlight) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -183,8 +230,8 @@ export function LearningDashboard() {
       {/* Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0" aria-live="polite">
-          <p className={eyebrow}>Live from the API</p>
-          <p className="mt-1.5 text-sm text-slate-600">
+          <p className="text-sm font-medium text-slate-900">Live from the API</p>
+          <p className="mt-2 text-sm text-slate-600">
             {load.status === "loading"
               ? load.waking
                 ? "Waking up the research engine…"
@@ -207,8 +254,9 @@ export function LearningDashboard() {
           <button
             type="button"
             onClick={improve}
-            disabled={improving || load.status !== "ready"}
+            disabled={improving || load.status !== "ready" || !admin}
             aria-describedby="improve-hint"
+            title={status === "authenticated" && !admin ? "Admins only" : undefined}
             className={cx(btn.primary, tap)}
           >
             {improving ? <Spinner className="h-3.5 w-3.5" /> : <Icon name="spark" />}
@@ -216,22 +264,31 @@ export function LearningDashboard() {
           </button>
         </div>
       </div>
-      <p id="improve-hint" className="sr-only">
-        Runs one paired experiment on the server. It usually takes 30 seconds to 2 minutes.
-      </p>
+      {status === "authenticated" && !admin ? (
+        <p
+          id="improve-hint"
+          className="-mt-4 flex items-start gap-2 text-sm leading-relaxed text-slate-600 sm:justify-end sm:text-right"
+        >
+          <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          Experiments and rollbacks change what every user gets, so they&apos;re limited to admins. Everything else here is
+          live and yours to explore.
+        </p>
+      ) : (
+        <p id="improve-hint" className="sr-only">
+          Runs one paired experiment on the server. It usually takes 30 seconds to 2 minutes.
+        </p>
+      )}
 
       {improving && (
         <section
           aria-labelledby="improve-title"
           aria-busy="true"
-          className="relative isolate animate-enter overflow-hidden rounded-2xl bg-ink-950 p-5 text-white ring-1 ring-ink-700/70 sm:p-6"
+          className="animate-enter overflow-hidden rounded-xl bg-ink-950 p-5 text-white ring-1 ring-ink-700 sm:p-6"
         >
-          <div aria-hidden className="absolute inset-0 -z-10 bg-grid opacity-50" />
-          <div aria-hidden className="absolute -top-32 right-0 -z-10 h-64 w-[36rem] max-w-full rounded-full bg-accent-400/12 blur-3xl" />
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0" role="status">
-              <p className="flex items-center gap-2 font-mono text-[10.5px] font-medium tracking-[0.18em] text-accent-300 uppercase">
-                <span aria-hidden className="h-1.5 w-1.5 animate-blink rounded-full bg-accent-300" />
+              <p className="flex items-center gap-2 font-mono text-2xs font-medium tracking-label text-accent-300 uppercase">
+                <Spinner className="h-3 w-3 text-accent-300" />
                 Experiment in progress
               </p>
               <h2 id="improve-title" className="mt-2 text-lg font-semibold tracking-tight">
@@ -241,7 +298,7 @@ export function LearningDashboard() {
                 Usually 30 seconds to 2 minutes. You can keep reading; the result appears here when the server answers.
               </p>
             </div>
-            <span className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-slate-200 tabular-nums">
+            <span className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-slate-200 tabular-nums">
               <Icon name="clock" className="h-3.5 w-3.5 text-slate-400" />
               {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
               <span className="sr-only"> elapsed</span>
@@ -255,13 +312,13 @@ export function LearningDashboard() {
                 <li
                   key={s.at}
                   className={cx(
-                    "rounded-lg border px-3 py-2 text-xs leading-snug transition-colors duration-500",
+                    "rounded-md border px-3 py-2 text-xs leading-snug transition-colors duration-500",
                     state === "active" && "border-indigo-300/25 bg-indigo-400/[0.08] text-slate-100",
                     state === "done" && "border-emerald-400/20 bg-emerald-400/[0.05] text-slate-300",
-                    state === "idle" && "border-white/[0.06] text-slate-500",
+                    state === "idle" && "border-white/[0.08] text-slate-400",
                   )}
                 >
-                  <span className="mb-1 block font-mono text-[10px] text-slate-500">
+                  <span className="mb-1 block font-mono text-2xs text-slate-400">
                     {state === "done" ? "✓" : String(i + 1).padStart(2, "0")}
                   </span>
                   {s.text}
@@ -276,7 +333,7 @@ export function LearningDashboard() {
         <div
           role={notice.tone === "bad" ? "alert" : "status"}
           className={cx(
-            "flex animate-enter items-start gap-3 rounded-2xl border p-4",
+            "flex animate-enter items-start gap-3 rounded-xl border p-4",
             notice.tone === "good" && "border-emerald-200 bg-emerald-50/70",
             notice.tone === "bad" && "border-rose-200 bg-rose-50/70",
             notice.tone === "info" && "border-indigo-200 bg-indigo-50/60",
@@ -297,7 +354,7 @@ export function LearningDashboard() {
             <p className="text-sm font-semibold text-slate-950">{notice.title}</p>
             {notice.body && <p className="mt-0.5 text-sm leading-relaxed text-slate-700">{notice.body}</p>}
             {notice.experimentId && (
-              <a href={`#exp-${notice.experimentId}`} className="mt-1.5 inline-block text-sm font-medium text-indigo-700 hover:underline">
+              <a href={`#exp-${notice.experimentId}`} className="mt-2 inline-block text-sm font-medium text-indigo-700 hover:underline">
                 See the experiment
               </a>
             )}
@@ -333,6 +390,8 @@ export function LearningDashboard() {
 
       {data && (
         <div className="animate-enter space-y-10">
+          <PendingApprovals items={data.experiments.filter(isPending)} admin={admin} labelOf={labelOf} onDecide={decide} />
+
           <Stats data={data} />
 
           <section aria-labelledby="components-title">
@@ -344,7 +403,12 @@ export function LearningDashboard() {
             {data.components.length ? (
               <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                 {data.components.map((c) => (
-                  <ComponentCard key={c.name} c={c} busy={rollingBack === c.name} onRollback={rollback} />
+                  <ComponentCard
+                    key={c.name}
+                    c={c}
+                    busy={rollingBack === c.name}
+                    onRollback={admin ? rollback : undefined}
+                  />
                 ))}
               </ul>
             ) : (
@@ -364,7 +428,7 @@ export function LearningDashboard() {
                   {[...data.issues]
                     .sort((a, b) => b.count - a.count)
                     .map((it, i) => (
-                      <li key={`${it.component}-${it.kind}-${i}`} className="flex gap-3 px-4 py-3.5 sm:px-5">
+                      <li key={`${it.component}-${it.kind}-${i}`} className="flex gap-3 px-4 py-4 sm:px-5">
                         <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-rose-50 px-2 font-mono text-xs font-semibold text-rose-700 ring-1 ring-rose-600/15 tabular-nums">
                           {it.count}
                           <span className="sr-only"> occurrences</span>
@@ -373,7 +437,7 @@ export function LearningDashboard() {
                           <p className="text-sm font-semibold text-slate-900">{humanize(it.kind)}</p>
                           <p className="text-xs text-slate-500">{labelOf(it.component)}</p>
                           {it.example && (
-                            <p className="mt-1.5 line-clamp-2 border-l-2 border-slate-200 pl-2.5 text-sm leading-relaxed text-slate-600">
+                            <p className="mt-2 line-clamp-2 border-l-2 border-slate-200 pl-2 text-sm leading-relaxed text-slate-600">
                               {it.example}
                             </p>
                           )}
@@ -435,7 +499,7 @@ export function LearningDashboard() {
 function SectionHead({ id, title, text }: { id: string; title: string; text: string }) {
   return (
     <div className="mb-4">
-      <h2 id={id} className="font-display text-[1.75rem] leading-tight tracking-tight text-slate-950">
+      <h2 id={id} className="text-lg font-semibold tracking-tight text-slate-950">
         {title}
       </h2>
       <p className="mt-1 max-w-[70ch] text-sm leading-relaxed text-slate-600">{text}</p>
@@ -447,7 +511,7 @@ function Empty({ text, good = false }: { text: string; good?: boolean }) {
   return (
     <p
       className={cx(
-        "flex items-center gap-2.5 rounded-2xl border border-dashed px-4 py-5 text-sm",
+        "flex items-center gap-2 rounded-xl border border-dashed px-4 py-5 text-sm",
         good ? "border-emerald-300/70 text-emerald-800" : "border-slate-300 text-slate-600",
       )}
     >
@@ -477,11 +541,11 @@ function Stats({ data }: { data: LlmOpsOverview }) {
     { label: "Rejected", value: String(r.rejected), foot: "Drafts a reviewer turned down" },
   ];
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-slate-200/80 ring-1 ring-slate-200/80 sm:grid-cols-3 lg:grid-cols-5">
+    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-slate-200/80 ring-1 ring-slate-200/80 sm:grid-cols-3 lg:grid-cols-5">
       {cells.map((c, i) => (
         <div key={c.label} className={cx("min-w-0 bg-surface p-4 sm:p-5", i === cells.length - 1 && "col-span-2 sm:col-span-1")}>
           <dt className={cx(monoLabel, "text-slate-500")}>{c.label}</dt>
-          <dd className="mt-1.5 flex items-end justify-between gap-3">
+          <dd className="mt-2 flex items-end justify-between gap-3">
             <span className="font-mono text-2xl font-semibold tracking-tight text-slate-950 tabular-nums">{c.value}</span>
             {c.chart && c.chart.length >= 2 && <Sparkline values={c.chart} />}
           </dd>
@@ -513,16 +577,16 @@ function Sparkline({ values }: { values: number[] }) {
 
 function RunRow({ r }: { r: RecentRun }) {
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1.5 px-4 py-3.5 sm:px-5">
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 px-4 py-4 sm:px-5">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-slate-900" title={r.query}>
           {r.query || r.target || "Untitled run"}
         </p>
-        <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500" title={fullDate(r.created_at)}>
+        <p className="mt-0.5 truncate font-mono text-2xs text-slate-500" title={fullDate(r.created_at)}>
           {[r.target, timeAgo(r.created_at)].filter(Boolean).join(" · ")}
         </p>
       </div>
-      <div className="flex flex-col items-end gap-1.5">
+      <div className="flex flex-col items-end gap-2">
         <span className="font-mono text-sm font-semibold text-slate-900 tabular-nums">
           {fmtScore(r.overall)}
           <span className="sr-only"> quality score</span>
@@ -540,7 +604,7 @@ function DashboardSkeleton() {
   const bar = "rounded-full bg-slate-200/80 animate-pulse-soft";
   return (
     <div aria-hidden className="space-y-10">
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-slate-200/80 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-slate-200/80 sm:grid-cols-3 lg:grid-cols-5">
         {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className={cx("bg-surface p-5", i === 4 && "col-span-2 sm:col-span-1")}>
             <div className={cx(bar, "h-2.5 w-20")} />

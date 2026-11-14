@@ -31,9 +31,9 @@ export function Risks({ s, c, n }: P) {
       description="What could go wrong, most severe first."
       aside={
         counts.length > 0 ? (
-          <span className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-500">
+          <span className="flex flex-wrap items-center gap-3 font-mono text-2xs text-slate-500">
             {counts.map(([lvl, k]) => (
-              <span key={lvl} className="inline-flex items-center gap-1.5">
+              <span key={lvl} className="inline-flex items-center gap-2">
                 <span aria-hidden className={cx("h-1.5 w-1.5 rounded-full", toneDot[toneOf(lvl)])} />
                 {k} {lvl}
               </span>
@@ -53,11 +53,11 @@ export function Risks({ s, c, n }: P) {
               <span aria-hidden className={cx("absolute top-4 bottom-4 left-0 w-[3px] rounded-r-full", toneDot[tone])} />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-slate-400 tabular-nums">R{i + 1}</span>
+                  <span className="font-mono text-2xs text-slate-500 tabular-nums">R{i + 1}</span>
                   <LevelPill value={r.severity} />
                 </div>
                 {hasText(r.title) && (
-                  <p className="mt-2 text-[15px] leading-snug font-semibold text-slate-900">{r.title}</p>
+                  <p className="mt-2 text-base leading-snug font-semibold text-slate-900">{r.title}</p>
                 )}
               </div>
               {hasText(r.detail) && (

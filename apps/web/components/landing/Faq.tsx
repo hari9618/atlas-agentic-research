@@ -36,7 +36,7 @@ export function Faq() {
   return (
     <section id="faq" aria-labelledby="faq-title" className="scroll-mt-24 border-t border-slate-200/70 bg-slate-50 py-24 sm:py-28">
       <Container className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
-        <div className="reveal lg:sticky lg:top-28 lg:self-start">
+        <div className="lg:sticky lg:top-28 lg:self-start">
           <SectionHeading id="faq-title" kicker="FAQ" title="Straight" accent="answers." />
           <p className="mt-5 text-base leading-relaxed text-slate-600">
             How Atlas sources, cites and scores its research, and what it is not.
@@ -46,7 +46,7 @@ export function Faq() {
             <Icon name="arrowRight" />
           </Link>
         </div>
-        <div className="reveal divide-y divide-slate-200 rounded-3xl border border-slate-200/80 bg-surface px-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] sm:px-7">
+        <div className="divide-y divide-slate-200 rounded-xl border border-slate-200/80 bg-surface px-5 shadow-[0_1px_2px_rgb(15_23_42/0.04)] sm:px-7">
           {FAQS.map((f, i) => (
             <Disclosure
               key={f.q}

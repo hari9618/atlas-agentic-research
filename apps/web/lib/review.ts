@@ -16,7 +16,32 @@ type SectionDef = {
 const text = (v: unknown) => typeof v === "string" && v.trim().length > 0;
 const some = (v: string[] | undefined) => Array.isArray(v) && v.some(text);
 
+// In reading order (the order StructuredReport renders them).
 export const REVIEW_SECTIONS: SectionDef[] = [
+  {
+    key: "verdict",
+    label: "Verdict",
+    block: "verdict",
+    present: (s) => text(s.verdict?.answer) || text(s.verdict?.recommendation),
+  },
+  {
+    key: "snapshot",
+    label: "Snapshot",
+    block: "snapshot",
+    present: (s) => (s.snapshot ?? []).some((f) => text(f?.label) && text(f?.value)),
+  },
+  {
+    key: "head_to_head",
+    label: "Head to head",
+    block: "head-to-head",
+    present: (s) => text(s.head_to_head?.asker) && (text(s.head_to_head?.summary) || (s.head_to_head?.rows ?? []).length > 0),
+  },
+  {
+    key: "custom_answers",
+    label: "Your questions",
+    block: "answers",
+    present: (s) => (s.custom_answers ?? []).some((a) => text(a?.question) && text(a?.answer)),
+  },
   {
     key: "company_overview",
     label: "Overview",
@@ -27,12 +52,30 @@ export const REVIEW_SECTIONS: SectionDef[] = [
     },
   },
   {
+    key: "pricing",
+    label: "Pricing",
+    block: "pricing",
+    present: (s) => text(s.pricing?.summary) || (s.pricing?.plans ?? []).some((p) => text(p?.name) || text(p?.price)),
+  },
+  {
     key: "financials",
     label: "Financials",
     block: "financials",
     present: (s) =>
       !!s.financials &&
       (text(s.financials.summary) || (s.financials.metrics ?? []).some((m) => text(m?.value) || text(m?.label))),
+  },
+  {
+    key: "strengths",
+    label: "Strengths",
+    block: "strengths",
+    present: (s) => some(s.strengths),
+  },
+  {
+    key: "weaknesses",
+    label: "Weaknesses",
+    block: "strengths",
+    present: (s) => some(s.weaknesses),
   },
   {
     key: "market_position",

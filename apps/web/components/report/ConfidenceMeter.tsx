@@ -90,11 +90,11 @@ export function ConfidenceMeter({
         aria-valuemax={100}
         aria-valuenow={pct}
         aria-valuetext={`${pct} out of 100, ${info.label.toLowerCase()}`}
-        className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100"
+        className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100"
       >
         <div className={cx("h-full rounded-full transition-[width] duration-700", info.bar)} style={{ width: `${pct}%` }} />
       </div>
-      <p className={cx("mt-1.5 text-xs font-medium", info.text)}>{info.label}</p>
+      <p className={cx("mt-2 text-xs font-medium", info.text)}>{info.label}</p>
       {!compact && <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{info.hint}</p>}
     </div>
   );
@@ -149,11 +149,11 @@ export function ConfidenceDial({ value, className }: { value: number | null | un
           <span className="font-mono text-[1.9rem] leading-none font-semibold tracking-tight text-white tabular-nums">
             {pct}
           </span>
-          <span className="mt-1 font-mono text-[10px] tracking-wider text-slate-500">/ 100</span>
+          <span className="mt-1 font-mono text-2xs tracking-wider text-slate-400">/ 100</span>
         </div>
       </div>
       <div className="min-w-0">
-        <p className="font-mono text-[10.5px] font-medium tracking-[0.16em] text-slate-400 uppercase">Confidence</p>
+        <p className="font-mono text-2xs font-medium tracking-label text-slate-400 uppercase">Confidence</p>
         <p className={cx("mt-1 text-sm font-semibold", info.textDark)}>{info.label}</p>
         <p className="mt-1 max-w-[15rem] text-xs leading-relaxed text-slate-400">{info.hint}</p>
       </div>

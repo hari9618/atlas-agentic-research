@@ -60,7 +60,7 @@ export function EvidenceDebate({
               <Icon name="scale" className="h-4.5 w-4.5" />
             </span>
             <span className="min-w-0">
-              <span className="block text-[15px] font-semibold text-slate-900">Appendix: evidence &amp; debate</span>
+              <span className="block text-base font-semibold text-slate-900">Appendix: evidence &amp; debate</span>
               <span className="block text-sm text-slate-500">
                 {findings.length} specialist finding{findings.length === 1 ? "" : "s"}
                 {debate.length > 0 && ` · ${debate.length} debate turn${debate.length === 1 ? "" : "s"}`}
@@ -77,19 +77,19 @@ export function EvidenceDebate({
                 {findings.map((f, i) => {
                   const pct = Math.round(Math.max(0, Math.min(1, f.confidence ?? 0)) * 100);
                   return (
-                    <li key={i} className="rounded-xl border border-slate-200/80 p-3.5 text-sm">
-                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <li key={i} className="rounded-xl border border-slate-200/80 p-4 text-sm">
+                      <div className="mb-2 flex items-center justify-between gap-3">
                         <span className="text-xs font-semibold text-indigo-700">{AGENT_LABEL[f.agent] ?? f.agent}</span>
                         <span className="flex items-center gap-2">
                           <span aria-hidden className="h-1 w-14 overflow-hidden rounded-full bg-slate-100">
                             <span className="block h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
                           </span>
-                          <span className="font-mono text-[11px] text-slate-500 tabular-nums">{pct}% confident</span>
+                          <span className="font-mono text-2xs text-slate-500 tabular-nums">{pct}% confident</span>
                         </span>
                       </div>
                       <p className="leading-relaxed text-slate-700">{f.claim}</p>
                       {f.citation && f.citation !== "n/a" && (
-                        <p className="mt-1.5 text-xs break-words text-slate-500">Source: {f.citation}</p>
+                        <p className="mt-2 text-xs break-words text-slate-500">Source: {f.citation}</p>
                       )}
                     </li>
                   );
@@ -114,7 +114,7 @@ export function EvidenceDebate({
                       >
                         <Icon name={r.icon} className="h-3.5 w-3.5" />
                       </span>
-                      <div className={cx("min-w-0 flex-1 rounded-xl border p-3.5 text-sm", r.bubble)}>
+                      <div className={cx("min-w-0 flex-1 rounded-xl border p-4 text-sm", r.bubble)}>
                         <div className="mb-1 flex items-center justify-between gap-2">
                           <span className="text-xs font-semibold tracking-wide text-slate-900 uppercase">{r.label}</span>
                           {t.leaning && <Badge tone={toneOf(t.leaning)}>{titleCase(t.leaning)}</Badge>}

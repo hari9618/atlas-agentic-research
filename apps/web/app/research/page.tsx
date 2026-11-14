@@ -5,7 +5,7 @@ import { Container } from "@/components/ui/Container";
 
 export const metadata: Metadata = {
   title: "Research workspace",
-  description: "Ask about any company. Atlas researches, debates both sides and drafts a cited brief for your review.",
+  description: "Ask about a company and say who you are. Atlas researches it, argues both sides and drafts a cited brief for your review.",
 };
 
 export default async function ResearchPage({

@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Interactions } from "@/components/ui/Interactions";
 
 // Three faces: Inter for UI and body copy, Instrument Serif for editorial
 // headlines, JetBrains Mono for figures, tickers and small labels. Exposed as CSS
@@ -18,11 +17,11 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", 
 
 export const metadata: Metadata = {
   title: {
-    default: "Atlas — Due diligence on any company, in minutes",
+    default: "Atlas — Due diligence on private companies",
     template: "%s · Atlas",
   },
   description:
-    "Atlas is an AI analyst team that researches any company, argues the bull and bear case, and writes an investor-grade brief where every claim is cited.",
+    "Ask about a competitor, vendor, investment or employer. Atlas researches it, argues both sides and answers your question in a brief where every claim is cited.",
 };
 
 export const viewport: Viewport = {
@@ -45,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html
       lang="en"
       suppressHydrationWarning
+      data-scroll-behavior="smooth"
       className={`h-full ${sans.variable} ${display.variable} ${mono.variable}`}
     >
       <head>
@@ -52,7 +52,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="min-h-full">
         {children}
-        <Interactions />
       </body>
     </html>
   );

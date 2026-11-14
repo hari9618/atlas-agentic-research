@@ -6,7 +6,6 @@ import { FinalCta } from "@/components/landing/FinalCta";
 import { Hero } from "@/components/landing/Hero";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Inside } from "@/components/landing/Inside";
-import { Markets } from "@/components/landing/Markets";
 import { RunShowcase } from "@/components/landing/RunShowcase";
 import { SamplePreview } from "@/components/landing/SamplePreview";
 import { SiteFooter } from "@/components/landing/SiteFooter";
@@ -27,7 +26,6 @@ export default function Home() {
       <main id="main">
         <Hero />
         <RunShowcase />
-        <Markets />
         <BuiltFor />
         <HowItWorks />
         <Features />

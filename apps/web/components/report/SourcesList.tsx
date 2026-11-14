@@ -27,9 +27,11 @@ export function uniqueSources(citations: Citation[]): Citation[] {
 }
 
 /** Compact source list. Always expanded, so every inline chip lands on a visible
- *  anchor; the targeted row is highlighted. */
+ *  anchor; the targeted row is highlighted. Ordered by the report's chip numbers, so
+ *  "Site 3" in the text is the third row here. */
 export function SourcesList({ citations, c, n }: { citations: Citation[]; c: Ctx; n?: number }) {
-  const items = uniqueSources(citations);
+  const rank = (x: Citation) => c.nums?.get(citationKey(x.citation)) ?? Number.MAX_SAFE_INTEGER;
+  const items = uniqueSources(citations).sort((a, b) => rank(a) - rank(b));
   if (!items.length) return null;
 
   return (
@@ -39,7 +41,7 @@ export function SourcesList({ citations, c, n }: { citations: Citation[]; c: Ctx
       n={n}
       title="Sources"
       description="Every document this brief cites. Source chips in the text jump here."
-      aside={<span className="font-mono text-[11px] text-slate-400">{items.length} cited</span>}
+      aside={<span className="font-mono text-2xs text-slate-500">{items.length} cited</span>}
     >
       <ol className="-mx-2 divide-y divide-slate-100">
         {items.map((x) => {
@@ -51,11 +53,11 @@ export function SourcesList({ citations, c, n }: { citations: Citation[]; c: Ctx
             <li
               key={key}
               id={sourceAnchor(c.ns, key)}
-              className="grid scroll-mt-32 grid-cols-[4.75rem_minmax(0,1fr)] gap-3 rounded-md px-2 py-2.5 text-[13px] transition-colors target:bg-indigo-50/80 target:ring-1 target:ring-indigo-200 @xl:grid-cols-[5.5rem_minmax(0,1fr)] @xl:gap-4"
+              className="grid scroll-mt-32 grid-cols-[4.75rem_minmax(0,1fr)] gap-3 rounded-md px-2 py-2 text-sm transition-colors target:bg-indigo-50/80 target:ring-1 target:ring-indigo-200 @xl:grid-cols-[5.5rem_minmax(0,1fr)] @xl:gap-4"
             >
               <span className="pt-px">
-                <span className="inline-flex rounded border border-slate-200 bg-slate-50 px-1.5 py-px font-mono text-[10px] leading-4 font-medium whitespace-nowrap text-slate-600">
-                  {chipLabel(key)}
+                <span className="inline-flex rounded border border-slate-200 bg-slate-50 px-2 py-px font-mono text-2xs leading-4 font-medium whitespace-nowrap text-slate-600">
+                  {chipLabel(key, c.nums)}
                 </span>
               </span>
               <div className="min-w-0">

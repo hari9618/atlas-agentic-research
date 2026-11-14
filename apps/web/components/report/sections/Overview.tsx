@@ -17,11 +17,11 @@ export function ExecutiveSummary({ s, c, n }: P) {
           <li key={i} className="flex gap-4 py-4">
             <span
               aria-hidden
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-indigo-50 font-mono text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-600/10 ring-inset"
+              className="w-5 shrink-0 pt-1 font-mono text-xs text-slate-500 tabular-nums"
             >
               {i + 1}
             </span>
-            <p className="min-w-0 text-[15px] leading-7 text-slate-800">
+            <p className="min-w-0 text-base leading-7 text-slate-800">
               <CitedOrMuted text={item} c={c} />
             </p>
           </li>
@@ -47,14 +47,14 @@ export function CompanyOverview({ s, c, n }: P) {
   if (nonEmpty(products))
     rows.push([
       "Products & services",
-      <ul key="p" className="flex flex-wrap gap-1.5">
+      <ul key="p" className="flex flex-wrap gap-2">
         {products.map((p) => (
           <li
             key={p}
             className={
               isPlaceholder(p)
                 ? "text-sm text-slate-500 italic"
-                : "rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[13px] font-medium text-slate-700"
+                : "rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-sm font-medium text-slate-700"
             }
           >
             {p}

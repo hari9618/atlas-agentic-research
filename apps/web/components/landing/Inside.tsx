@@ -1,5 +1,5 @@
 import { Container } from "@/components/ui/Container";
-import { Icon, type IconName } from "@/components/ui/Icon";
+import { Icon } from "@/components/ui/Icon";
 import { cx } from "@/components/ui/styles";
 import { SectionHeading } from "./SectionHeading";
 
@@ -8,34 +8,28 @@ import { SectionHeading } from "./SectionHeading";
 
 const ANALYSTS = ["Fundamentals", "News & sentiment", "Market & competitors", "Risk"];
 
-const PILLARS: { icon: IconName; title: string; body: string }[] = [
+const PILLARS: { title: string; body: string }[] = [
   {
-    icon: "search",
     title: "Grounded retrieval",
     body: "Keyword + semantic search with re-ranking, and a self-correcting loop that falls back to the live web when your documents don't cover the company.",
   },
   {
-    icon: "shield",
     title: "A citation guardrail",
     body: "Every claim must point to retrieved evidence. Coverage is measured, and thin evidence lowers the confidence score instead of hiding.",
   },
   {
-    icon: "refresh",
     title: "Resilient by default",
     body: "Rate limits and timeouts retry with backoff. If one analyst still fails, its section is marked unavailable and the rest of the brief ships.",
   },
   {
-    icon: "database",
     title: "Pause, review, resume",
     body: "Runs are checkpointed in Postgres, so a draft waiting for your review survives restarts and picks up exactly where it stopped.",
   },
   {
-    icon: "activity",
     title: "Observed and scored",
     body: "Every agent step is traced, and each brief is scored for faithfulness, relevance and citation coverage.",
   },
   {
-    icon: "layers",
     title: "Memory that compounds",
     body: "Past research is remembered and distilled, so the next question about a company starts from what Atlas already learned.",
   },
@@ -55,7 +49,7 @@ function Node({
   return (
     <div
       className={cx(
-        "rounded-xl border px-3.5 py-2.5 text-center",
+        "rounded-xl border px-4 py-2 text-center",
         tone === "default" && "border-white/10 bg-white/[0.04]",
         tone === "accent" && "border-indigo-400/30 bg-indigo-500/10",
         tone === "bull" && "border-emerald-400/25 bg-emerald-400/[0.07]",
@@ -65,7 +59,7 @@ function Node({
       )}
     >
       <p className={cx("text-sm font-medium", tone === "you" ? "text-ink-950" : "text-slate-100")}>{label}</p>
-      {sub && <p className={cx("mt-0.5 text-[11px]", tone === "you" ? "text-slate-600" : "text-slate-500")}>{sub}</p>}
+      {sub && <p className={cx("mt-0.5 text-2xs", tone === "you" ? "text-slate-600" : "text-slate-400")}>{sub}</p>}
     </div>
   );
 }
@@ -81,13 +75,13 @@ function Arrow() {
 
 function Pipeline() {
   return (
-    <figure className="reveal relative mt-14 rounded-3xl border border-white/[0.08] bg-ink-900/60 p-5 sm:p-8">
+    <figure className="mt-10 rounded-xl border border-white/[0.08] bg-ink-900/60 p-5 sm:p-8">
       <figcaption className="mb-6 flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-[11px] tracking-[0.18em] text-slate-500 uppercase">One research run</span>
-        <span className="font-mono text-[11px] text-slate-500">LangGraph · checkpointed state</span>
+        <span className="font-mono text-2xs tracking-label text-slate-400 uppercase">One research run</span>
+        <span className="font-mono text-2xs text-slate-400">LangGraph · checkpointed state</span>
       </figcaption>
       <div className="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1.4fr_auto_1fr_auto_1fr_auto_1fr]">
-        <Node label="Your question" sub="any company" />
+        <Node label="Your question" sub="and who is asking" />
         <Arrow />
         <Node label="Supervisor" sub="plans the work" tone="accent" />
         <Arrow />
@@ -122,15 +116,10 @@ export function Inside() {
     <section
       id="inside"
       aria-labelledby="inside-title"
-      className="relative isolate scroll-mt-24 overflow-hidden bg-ink-950 py-24 text-white sm:py-28"
+      className="scroll-mt-24 bg-ink-950 py-20 text-white sm:py-24"
     >
-      <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
-      <div
-        aria-hidden
-        className="absolute -top-40 right-0 -z-10 h-[34rem] w-[50rem] bg-[radial-gradient(closest-side,rgb(190_235_70/0.25),transparent)]"
-      />
       <Container>
-        <div className="reveal">
+        <div className="">
           <SectionHeading
             id="inside-title"
             tone="dark"
@@ -141,13 +130,10 @@ export function Inside() {
           />
         </div>
         <Pipeline />
-        <ul className="mt-6 grid gap-px overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-6 grid gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2 lg:grid-cols-3">
           {PILLARS.map((p) => (
-            <li key={p.title} className="reveal bg-ink-950 p-6 sm:p-7">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-indigo-300">
-                <Icon name={p.icon} className="h-4.5 w-4.5" />
-              </span>
-              <h3 className="mt-5 text-base font-semibold text-white">{p.title}</h3>
+            <li key={p.title} className="bg-ink-950 p-6 sm:p-7">
+              <h3 className="text-base font-semibold text-white">{p.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">{p.body}</p>
             </li>
           ))}

@@ -6,7 +6,7 @@ export function Wordmark({ href = "/", tone = "light" }: { href?: string; tone?:
   return (
     <Link
       href={href}
-      className={cx("flex items-center gap-2.5 rounded-md", tone === "dark" ? "text-white" : "text-slate-900")}
+      className={cx("flex items-center gap-2 rounded-md", tone === "dark" ? "text-white" : "text-slate-900")}
       aria-label="Atlas home"
     >
       <svg aria-hidden viewBox="0 0 32 32" className="h-7 w-7">

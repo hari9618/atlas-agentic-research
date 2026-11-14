@@ -1,7 +1,14 @@
 // Typed client for the Atlas backend. Contract: docs/investor-platform-design.md §1 + §4,
 // plus the review (reject / section) and LLM-Ops (/llmops/*) additions.
 
-export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import type { Me } from "./auth-common";
+import { authFetch } from "./auth";
+import { API, type ApiFailure, fail, failureFromResponse, isOffline, markHealthy } from "./http";
+import { createSseParser, type SseMessage } from "./sse";
+
+// The transport basics moved to lib/http.ts; re-exported so callers keep one import.
+export { API, ensureAwake, isWarm } from "./http";
+export type { ApiFailure, FailureKind, ServerErrorCode, WakeResult } from "./http";
 
 // ---------------------------------------------------------------------------
 // Report schema (§1). Every field is optional: the UI renders what is present.
@@ -30,6 +37,38 @@ export type Development = {
 };
 export type Risk = { title?: string; severity?: Level | string; detail?: string; citation?: string };
 
+/** Who asked, and why. The report adapts its verdict and emphasis to the persona. */
+export type Persona = "investor" | "competitor" | "buyer" | "partner" | "job_seeker" | "general";
+export type Brief = {
+  persona?: Persona | string;
+  /** The asker's own company (e.g. "CaughtLeads"), if they named one. */
+  asker?: string;
+  asker_domain?: string;
+  subject_domain?: string;
+  goal?: string;
+  extra_asks?: string[];
+};
+/** The direct answer to the question, for this persona. */
+export type Verdict = { answer?: string; recommendation?: string };
+export type Fact = { label?: string; value?: string; citation?: string };
+export type PricingPlan = { name?: string; price?: string; notes?: string; citation?: string };
+export type Pricing = { summary?: string; plans?: PricingPlan[] };
+export type Edge = "subject" | "asker" | "even";
+export type HeadToHeadRow = {
+  dimension?: string;
+  subject?: string;
+  asker?: string;
+  edge?: Edge | string;
+  citation?: string;
+};
+export type HeadToHead = {
+  asker?: string;
+  overlap?: "high" | "medium" | "low" | "none" | string;
+  summary?: string;
+  rows?: HeadToHeadRow[];
+};
+export type CustomAnswer = { question?: string; answer?: string; citation?: string };
+
 export type ReportSections = {
   company?: string;
   headline?: string;
@@ -46,13 +85,23 @@ export type ReportSections = {
   market_position?: { summary?: string; strengths?: string[]; weaknesses?: string[] };
   competitors?: Competitor[];
   recent_developments?: Development[];
-  sentiment?: { overall?: OverallSentiment | string; summary?: string };
+  sentiment?: { overall?: OverallSentiment | string; summary?: string; praise?: string[]; complaints?: string[] };
   risks?: Risk[];
   bull_case?: string[];
   bear_case?: string[];
   outlook?: { summary?: string; watch_items?: string[] };
   bottom_line?: string;
   uncertainties?: string[];
+  // Persona-aware additions (all optional; older reports simply lack them).
+  brief?: Brief;
+  verdict?: Verdict;
+  snapshot?: Fact[];
+  /** Top-level now; market_position.strengths/weaknesses mirror these. */
+  strengths?: string[];
+  weaknesses?: string[];
+  pricing?: Pricing;
+  head_to_head?: HeadToHead;
+  custom_answers?: CustomAnswer[];
 };
 
 export type Finding = { agent: string; claim: string; citation: string; confidence: number };
@@ -71,6 +120,13 @@ export type ReviewAction = ReviewDecision | "auto_approve";
 
 /** The report sections a reviewer can aim feedback at (`section` on /research/resume). */
 export type ReviewSectionKey =
+  | "verdict"
+  | "snapshot"
+  | "strengths"
+  | "weaknesses"
+  | "pricing"
+  | "head_to_head"
+  | "custom_answers"
   | "company_overview"
   | "financials"
   | "market_position"
@@ -127,130 +183,6 @@ export type NodeName = (typeof NODE_EVENTS)[number];
 export const SPECIALISTS = ["fundamentals", "news_sentiment", "market", "risk"] as const;
 
 // ---------------------------------------------------------------------------
-// Failures. Every way a request can go wrong is named, so the UI can say what
-// happened and offer the right recovery instead of a generic "something broke".
-// ---------------------------------------------------------------------------
-
-/** Codes the backend sends in an in-band SSE `error` event. */
-export type ServerErrorCode = "bad_request" | "not_configured" | "run_failed" | "not_paused" | "unknown_thread";
-
-export type FailureKind =
-  /** The browser reports no network connection. */
-  | "offline"
-  /** No response at all: the server is down, asleep past our budget, or blocked (CORS/DNS). */
-  | "unreachable"
-  /** The server answered with an HTTP error (or a non-SSE body the stream can't read). */
-  | "server"
-  /** A stream that was open closed before its terminal event. */
-  | "dropped"
-  /** A stream stayed open but went silent far longer than any agent step takes. */
-  | "stalled"
-  /** The server reported a problem in-band (SSE `error` event, or `{error}` JSON). */
-  | "in_band"
-  /** A request took longer than its time budget. */
-  | "timeout"
-  /** Cancelled by the caller. */
-  | "aborted";
-
-export type ApiFailure = {
-  kind: FailureKind;
-  message: string;
-  code?: ServerErrorCode | string;
-  status?: number;
-};
-
-const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
-
-function fail(kind: FailureKind, message: string, extra: Partial<ApiFailure> = {}): ApiFailure {
-  return { kind, message, ...extra };
-}
-
-// ---------------------------------------------------------------------------
-// Cold starts. The API runs on a free tier that sleeps when idle; the first request
-// after a nap can take ~50 s while the instance boots. We ping /health first (shared
-// between callers, cached while warm) so a run never opens a stream into the void.
-// ---------------------------------------------------------------------------
-
-const WARM_FOR_MS = 90_000;
-const WAKE_BUDGET_MS = 80_000;
-const ATTEMPT_TIMEOUT_MS = 25_000;
-const SLOW_AFTER_MS = 1_200;
-
-let healthyAt = 0;
-let inflight: Promise<WakeResult> | null = null;
-
-export type WakeResult = { ok: true } | { ok: false; failure: ApiFailure };
-
-/** True if the API answered recently, so a run can start without a health check. */
-export function isWarm(): boolean {
-  return Date.now() - healthyAt < WARM_FOR_MS;
-}
-
-function markHealthy() {
-  healthyAt = Date.now();
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function pingUntilAwake(): Promise<WakeResult> {
-  const started = Date.now();
-  let lastStatus: number | undefined;
-  while (Date.now() - started < WAKE_BUDGET_MS) {
-    if (isOffline()) return { ok: false, failure: fail("offline", "You're offline.") };
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT_MS);
-    try {
-      const r = await fetch(`${API}/health`, { cache: "no-store", signal: ctrl.signal });
-      // Any non-5xx answer means a live process is serving; 502/503 is the platform's
-      // proxy while the instance boots, so keep waiting.
-      if (r.status < 500) {
-        markHealthy();
-        return { ok: true };
-      }
-      lastStatus = r.status;
-    } catch {
-      // Network error or attempt timeout: the instance may still be booting.
-    } finally {
-      clearTimeout(timer);
-    }
-    await sleep(2_500);
-  }
-  return {
-    ok: false,
-    failure: lastStatus
-      ? fail("server", "The research engine is responding with errors.", { status: lastStatus })
-      : fail("unreachable", "The research engine didn't respond."),
-  };
-}
-
-/** Resolve once the API is awake. `onSlow` fires if that takes more than a moment
- *  (i.e. a cold start), so the UI can explain the wait instead of looking frozen. */
-export function ensureAwake(opts: { onSlow?: () => void; signal?: AbortSignal } = {}): Promise<WakeResult> {
-  if (isWarm()) return Promise.resolve({ ok: true });
-  if (isOffline()) return Promise.resolve({ ok: false, failure: fail("offline", "You're offline.") });
-
-  const shared = (inflight ??= pingUntilAwake().finally(() => {
-    inflight = null;
-  }));
-
-  return new Promise<WakeResult>((resolve) => {
-    let settled = false;
-    const slow = setTimeout(() => !settled && opts.onSlow?.(), SLOW_AFTER_MS);
-    const done = (r: WakeResult) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(slow);
-      opts.signal?.removeEventListener("abort", onAbort);
-      resolve(r);
-    };
-    const onAbort = () => done({ ok: false, failure: fail("aborted", "Cancelled.") });
-    if (opts.signal?.aborted) return onAbort();
-    opts.signal?.addEventListener("abort", onAbort);
-    shared.then(done);
-  });
-}
-
-// ---------------------------------------------------------------------------
 // SSE streams
 // ---------------------------------------------------------------------------
 
@@ -265,6 +197,8 @@ export type StreamHandlers = {
 /** No agent step takes anywhere near this long; silence beyond it means a dead link. */
 const STALL_MS = 240_000;
 
+const isNode = (e: string): e is NodeName => (NODE_EVENTS as readonly string[]).includes(e);
+
 function parse(raw: unknown): Record<string, unknown> {
   if (typeof raw !== "string" || !raw) return {};
   try {
@@ -275,22 +209,29 @@ function parse(raw: unknown): Record<string, unknown> {
   }
 }
 
-/** Open an SSE stream and dispatch Atlas events. Returns a cancel fn.
+async function readJson(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/** Open an authenticated SSE stream and dispatch Atlas events. Returns a cancel fn.
  *
- *  EventSource reconnects on its own after a dropped connection, which here would
- *  re-send the GET and launch a duplicate run (or a duplicate resume). So every
- *  failure closes the source on the spot (close() inside the error handler cancels
- *  the scheduled reconnect) and is reported once, classified. */
-function openStream(url: string, h: StreamHandlers): () => void {
-  const es = new EventSource(url);
+ *  Read with fetch rather than EventSource, which can't send the bearer token. That
+ *  also settles reconnects: there are none. A retried GET would launch a duplicate run
+ *  (or a duplicate resume), so every failure ends the stream on the spot and is
+ *  reported once, classified. */
+function openStream(path: string, h: StreamHandlers): () => void {
+  const ctrl = new AbortController();
   let done = false;
-  let opened = false;
   let stall: ReturnType<typeof setTimeout> | undefined;
 
   const finish = () => {
     done = true;
     clearTimeout(stall);
-    es.close();
+    ctrl.abort();
   };
   const report = (f: ApiFailure) => {
     if (done) return;
@@ -305,64 +246,94 @@ function openStream(url: string, h: StreamHandlers): () => void {
       STALL_MS,
     );
   };
+  const lost = () =>
+    report(
+      isOffline() ? fail("offline", "You're offline.") : fail("dropped", "The connection to the research engine dropped."),
+    );
 
-  alive();
-  es.onopen = () => {
-    opened = true;
-    alive();
+  const dispatch = ({ event, data }: SseMessage) => {
+    if (done) return;
+    if (event === "start") {
+      alive();
+      h.onStart?.(parse(data));
+    } else if (isNode(event)) {
+      alive();
+      h.onNode?.(event, parse(data));
+    } else if (event === "review_required") {
+      finish();
+      h.onReviewRequired?.(parse(data) as unknown as ReviewRequired);
+    } else if (event === "final") {
+      finish();
+      h.onFinal?.(parse(data) as unknown as FinalPayload);
+    } else if (event === "error") {
+      // In-band failure, e.g. input validation, which the stream endpoints still
+      // answer as HTTP 200 with one `error` event carrying {error, code}.
+      const d = parse(data);
+      const message = typeof d.error === "string" && d.error ? d.error : "The research run reported an error.";
+      report(fail("in_band", message, { code: typeof d.code === "string" ? d.code : undefined }));
+    } else {
+      alive(); // an event we don't render still proves the link is up
+    }
   };
 
-  es.addEventListener("start", (e) => {
-    if (done) return;
-    alive();
-    h.onStart?.(parse((e as MessageEvent).data));
-  });
-
-  for (const node of NODE_EVENTS) {
-    es.addEventListener(node, (e) => {
-      if (done) return;
-      alive();
-      h.onNode?.(node, parse((e as MessageEvent).data));
-    });
-  }
-
-  es.addEventListener("review_required", (e) => {
-    if (done) return;
-    finish();
-    h.onReviewRequired?.(parse((e as MessageEvent).data) as unknown as ReviewRequired);
-  });
-
-  es.addEventListener("final", (e) => {
-    if (done) return;
-    finish();
-    h.onFinal?.(parse((e as MessageEvent).data) as unknown as FinalPayload);
-  });
-
-  // `error` is both a server-sent event name (a MessageEvent carrying {error, code})
-  // and the connection-failure event (a plain Event). Tell them apart by the data.
-  es.addEventListener("error", (e) => {
-    if (done) return;
-    const raw = (e as MessageEvent).data;
-    if (typeof raw === "string" && raw) {
-      const d = parse(raw);
-      const message = typeof d.error === "string" && d.error ? d.error : "The research run reported an error.";
-      const code = typeof d.code === "string" ? d.code : undefined;
-      report(fail("in_band", message, { code }));
+  alive();
+  void (async () => {
+    let res: Response;
+    try {
+      res = await authFetch(path, {
+        headers: { Accept: "text/event-stream" },
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+    } catch {
+      if (!done)
+        report(isOffline() ? fail("offline", "You're offline.") : fail("unreachable", "The research engine didn't respond."));
       return;
     }
-    // CLOSED: the browser gave up for good (HTTP error status or a non-SSE response).
-    // CONNECTING: it was about to retry, which we refuse (see above).
-    const closed = es.readyState === EventSource.CLOSED;
-    if (isOffline()) report(fail("offline", "You're offline."));
-    else if (opened) report(fail("dropped", "The connection to the research engine dropped."));
-    else if (closed) report(fail("server", "The research engine refused the request."));
-    else report(fail("unreachable", "The research engine didn't respond."));
-  });
+    if (done) return;
+
+    if (!res.ok) {
+      report(failureFromResponse(res.status, await readJson(res), res.headers, "research"));
+      return;
+    }
+    if (!res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+      // A 200 that isn't a stream: a degraded backend answering `{error}` JSON, or a
+      // proxy page. Say what we can.
+      const b = (await readJson(res)) as { error?: unknown; detail?: unknown; code?: unknown } | null;
+      const message = typeof b?.error === "string" ? b.error : typeof b?.detail === "string" ? b.detail : null;
+      report(
+        message
+          ? fail("in_band", message, { code: typeof b?.code === "string" ? b.code : undefined })
+          : fail("server", "The research engine refused the request.", { status: res.status }),
+      );
+      return;
+    }
+
+    alive();
+    const parser = createSseParser(dispatch, () => !done && alive());
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    try {
+      for (;;) {
+        const { value, done: eof } = await reader.read();
+        if (eof || done) break;
+        parser.push(decoder.decode(value, { stream: true }));
+      }
+      if (!done) parser.push(decoder.decode());
+    } catch {
+      // A terminal event or a cancel aborts the read on purpose; anything else is a cut.
+      if (!done) lost();
+      return;
+    }
+    parser.end();
+    // The server closed the stream without a terminal event.
+    if (!done) lost();
+  })();
 
   return () => {
     done = true;
     clearTimeout(stall);
-    es.close();
+    ctrl.abort();
   };
 }
 
@@ -383,7 +354,7 @@ export function startResearch(
     thread_id: opts.threadId ?? newThreadId(),
     review: opts.review === false ? "0" : "1",
   });
-  return openStream(`${API}/research/stream?${params}`, h);
+  return openStream(`/research/stream?${params}`, h);
 }
 
 /** Resume a paused run: approve, request a revision (feedback required), or reject
@@ -399,7 +370,7 @@ export function resumeResearch(
   const feedback = opts.feedback?.trim() ?? "";
   if (action !== "approve" && feedback) params.set("feedback", feedback);
   if (action !== "approve" && opts.section) params.set("section", opts.section);
-  return openStream(`${API}/research/resume?${params}`, h);
+  return openStream(`/research/resume?${params}`, h);
 }
 
 // ---------------------------------------------------------------------------
@@ -408,14 +379,16 @@ export function resumeResearch(
 
 export type Result<T> = { ok: true; data: T } | { ok: false; failure: ApiFailure };
 
-/** fetch + JSON with a time budget and classified failures. A body of `{error}` is an
- *  in-band failure even on HTTP 200 (the backend degrades that way when unconfigured). */
+/** fetch + JSON with a time budget and classified failures. Authenticated by default
+ *  (bearer token, refresh-and-retry on 401); `auth: false` for public endpoints. A body
+ *  of `{error}` is an in-band failure even on HTTP 200 (the backend degrades that way
+ *  when unconfigured). */
 export async function requestJson<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit & { timeoutMs?: number; auth?: boolean } = {},
 ): Promise<Result<T>> {
   if (isOffline()) return { ok: false, failure: fail("offline", "You're offline.") };
-  const { timeoutMs = 20_000, signal, ...rest } = init;
+  const { timeoutMs = 20_000, signal, auth = true, ...rest } = init;
   const ctrl = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -425,28 +398,15 @@ export async function requestJson<T>(
   const onAbort = () => ctrl.abort();
   signal?.addEventListener("abort", onAbort);
   try {
-    const r = await fetch(`${API}${path}`, { cache: "no-store", ...rest, signal: ctrl.signal });
+    const req: RequestInit = { cache: "no-store", ...rest, signal: ctrl.signal };
+    const r = auth ? await authFetch(path, req) : await fetch(`${API}${path}`, req);
     markHealthy();
-    let body: unknown = null;
-    try {
-      body = await r.json();
-    } catch {
-      body = null;
-    }
+    const body = await readJson(r);
+    if (!r.ok) return { ok: false, failure: failureFromResponse(r.status, body, r.headers) };
     const err =
       body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string"
         ? (body as { error: string }).error
-        : body && typeof body === "object" && "detail" in body && typeof (body as { detail: unknown }).detail === "string"
-          ? (body as { detail: string }).detail
-          : null;
-    if (!r.ok) {
-      return {
-        ok: false,
-        failure: fail(r.status >= 500 ? "server" : "in_band", err ?? `Request failed (HTTP ${r.status}).`, {
-          status: r.status,
-        }),
-      };
-    }
+        : null;
     if (err) return { ok: false, failure: fail("in_band", err, { status: r.status }) };
     return { ok: true, data: body as T };
   } catch {
@@ -458,6 +418,11 @@ export async function requestJson<T>(
     clearTimeout(timer);
     signal?.removeEventListener("abort", onAbort);
   }
+}
+
+/** The signed-in user and their plan (quota), for the guest banner. */
+export function getMe(signal?: AbortSignal) {
+  return requestJson<Me>("/auth/me", { signal });
 }
 
 // ---------------------------------------------------------------------------
@@ -509,10 +474,13 @@ export type Experiment = {
   component: string;
   lever: Lever;
   hypothesis: string;
-  change: { summary: string; before: unknown; after: unknown };
+  /** The proposal. `lesson` carries the exact text when the lever is a written lesson. */
+  change: { summary: string; before: unknown; after: unknown; lesson?: string };
   trials: Trial[];
   mean_delta: number;
-  decision: "released" | "rejected";
+  /** "awaiting_approval" when a change passed replay but needs a human sign-off. */
+  status?: "awaiting_approval" | "released" | "rejected" | string;
+  decision: "released" | "rejected" | "awaiting_approval" | string;
   reason: string;
   version_before: number;
   version_after: number | null;
@@ -600,6 +568,62 @@ export function rollbackComponent(component: string) {
   });
 }
 
+export const isPending = (e: Pick<Experiment, "status" | "decision">) =>
+  e.status === "awaiting_approval" || e.decision === "awaiting_approval";
+
+/** The experiment log with live status (incl. changes awaiting approval). */
+export async function getExperiments(signal?: AbortSignal): Promise<Result<Experiment[]>> {
+  const r = await requestJson<unknown>("/llmops/experiments", { signal, timeoutMs: 30_000 });
+  if (!r.ok) return r;
+  const raw = Array.isArray(r.data) ? r.data : (r.data as { experiments?: unknown } | null)?.experiments;
+  return { ok: true, data: arr<Experiment>(raw).map(normalizeExperiment) };
+}
+
+export type ApproveResponse = { component: string; version: number };
+
+/** Admin: put an approved candidate live (as a new policy version). */
+export function approveExperiment(id: string) {
+  return requestJson<ApproveResponse>(`/llmops/experiments/${encodeURIComponent(id)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    timeoutMs: 30_000,
+  });
+}
+
+/** Admin: discard a candidate; the active policy stays. */
+export function rejectExperiment(id: string) {
+  return requestJson<{ status: string }>(`/llmops/experiments/${encodeURIComponent(id)}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    timeoutMs: 30_000,
+  });
+}
+
 export function getComponentHistory(name: string, signal?: AbortSignal) {
   return requestJson<ComponentHistory>(`/llmops/components/${encodeURIComponent(name)}`, { signal });
+}
+
+// ---------------------------------------------------------------------------
+// Admin: audit log (/admin/audit, admin only)
+// ---------------------------------------------------------------------------
+
+export type AuditEvent = {
+  /** ISO timestamp (or epoch seconds/ms from an older backend). */
+  at: string | number;
+  event: string;
+  user_id: string | null;
+  ip: string | null;
+  request_id: string | null;
+  detail: unknown;
+};
+
+export async function getAuditLog(
+  opts: { prefix?: string; limit?: number; signal?: AbortSignal } = {},
+): Promise<Result<AuditEvent[]>> {
+  const params = new URLSearchParams({ limit: String(opts.limit ?? 200) });
+  if (opts.prefix) params.set("event", opts.prefix);
+  const r = await requestJson<{ events?: unknown }>(`/admin/audit?${params}`, { signal: opts.signal });
+  return r.ok ? { ok: true, data: arr<AuditEvent>(r.data?.events) } : r;
 }

@@ -12,6 +12,37 @@ export const SAMPLE_SECTIONS: ReportSections = {
     "Helios is growing fast and shifting toward recurring software revenue, but heavy customer concentration and a single-source supplier keep the picture balanced.",
   stance: "neutral",
   confidence: 0.62,
+  brief: {
+    persona: "competitor",
+    goal: "Decide whether Helios is a competitive threat worth responding to",
+  },
+  verdict: {
+    recommendation: "A credible, growing competitor: watch closely",
+    answer:
+      "Helios grew revenue 28% to $4.2B [sec_edgar#0] and earns more of it from recurring software than its main rival [research#0]. Its weak spots are three customers making up 39% of revenue and a single actuator supplier [sec_edgar#1], which is where it is most exposed.",
+  },
+  snapshot: [
+    { label: "Revenue (FY2025)", value: "$4.2B", citation: "[sec_edgar#0]" },
+    { label: "Growth", value: "+28% YoY", citation: "[sec_edgar#0]" },
+    { label: "Software & services", value: ">30% of revenue", citation: "[research#0]" },
+    { label: "Top-3 customers", value: "39% of revenue", citation: "[sec_edgar#1]" },
+    { label: "Largest recent deal", value: "$900M, 5 years", citation: "[news#0]" },
+  ],
+  strengths: [
+    "Software and services above 30% of revenue vs about 18% at Aster Dynamics [research#0].",
+    "A $900M five-year contract with roughly 40% recurring software and support [news#0].",
+    "Revenue up 28% year over year [sec_edgar#0].",
+  ],
+  weaknesses: [
+    "Top three customers are 39% of revenue [sec_edgar#1].",
+    "Single Taiwanese supplier for high-precision actuators [sec_edgar#1].",
+  ],
+  custom_answers: [
+    {
+      question: "How big is their newest contract?",
+      answer: "$900M over five years for 12,000 robots, with about 40% of the value in recurring software and support [news#0].",
+    },
+  ],
   executive_summary: [
     "FY2025 revenue reached $4.2B, up 28% year over year from $3.28B [sec_edgar#0].",
     "Fleet software and services make up more than 30% of revenue, ahead of rival Aster Dynamics at about 18% [research#0].",

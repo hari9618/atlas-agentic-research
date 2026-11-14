@@ -1,8 +1,10 @@
 import type { ApiFailure } from "@/lib/api";
+import { inMinutes, inSeconds } from "@/lib/http";
 
 /** What the user can do next. `back` returns to the draft so a different decision can
- *  be made; `new` starts over; `edit` puts focus back on the question. */
-export type Recovery = "retry" | "back" | "new" | "edit";
+ *  be made; `new` starts over; `edit` puts focus back on the question; `signin` goes
+ *  to the sign-in page and comes back here. */
+export type Recovery = "retry" | "back" | "new" | "edit" | "signin";
 
 export type RunError = {
   title: string;
@@ -15,11 +17,60 @@ export type RunError = {
 };
 
 /** Turn a classified failure into calm, specific copy and the right way out. */
-export function describeFailure(f: ApiFailure, during: "start" | "resume"): RunError {
+export function describeFailure(
+  f: ApiFailure,
+  during: "start" | "resume",
+  opts: { guest?: boolean } = {},
+): RunError {
   const resume = during === "resume";
   const retryOrBack: Recovery[] = resume ? ["retry", "back"] : ["retry", "edit"];
+  const stay: Recovery[] = resume ? ["back"] : ["edit"];
 
   switch (f.kind) {
+    case "rate_limited":
+      return {
+        title: "You've hit the hourly research limit",
+        message: `Try again in ${inMinutes(f.retryAfter)}. Nothing here has been lost.${
+          opts.guest ? " Create a free account for a higher limit." : ""
+        }`,
+        // Retrying now would only hit the limit again.
+        actions: stay,
+        threadAlive: true,
+        tone: "mid",
+      };
+    case "busy":
+      return {
+        title: "Atlas is at capacity right now",
+        message: `Every research slot is taken. Retrying is safe in ${inSeconds(f.retryAfter)}; no run was started.`,
+        actions: retryOrBack,
+        threadAlive: true,
+        tone: "mid",
+      };
+    case "run_in_progress":
+      return {
+        title: "You already have a run in progress",
+        message:
+          "Atlas runs one brief at a time per account. If it's open in another tab, let it finish (or close that tab), then try again.",
+        actions: retryOrBack,
+        threadAlive: true,
+        tone: "mid",
+      };
+    case "forbidden":
+      return {
+        title: "Admins only",
+        message: "This action is limited to Atlas administrators.",
+        actions: stay,
+        threadAlive: true,
+        tone: "mid",
+      };
+    case "unauthenticated":
+      return {
+        title: "Your session has ended",
+        message: "Sign in again to continue. You'll come straight back here.",
+        actions: ["signin"],
+        threadAlive: true,
+        tone: "mid",
+      };
     case "offline":
       return {
         title: "You're offline",

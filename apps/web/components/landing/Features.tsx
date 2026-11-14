@@ -1,5 +1,5 @@
 import { Container } from "@/components/ui/Container";
-import { Icon, type IconName } from "@/components/ui/Icon";
+import type { IconName } from "@/components/ui/Icon";
 import { cx } from "@/components/ui/styles";
 import {
   CitationsVisual,
@@ -22,8 +22,8 @@ const FEATURES: { icon: IconName; title: string; body: string; visual: React.Rea
   },
   {
     icon: "globe",
-    title: "Research any company",
-    body: "Public or private, US or Indian, a market leader or a startup. Live web, SEC filings, market data, news, plus anything you upload.",
+    title: "Made for companies nobody covers",
+    body: "Startups and private companies included. Live web search, news, SEC filings where they exist, plus anything you upload.",
     visual: <SourcesVisual />,
     span: "lg:col-span-3",
   },
@@ -60,9 +60,9 @@ const FEATURES: { icon: IconName; title: string; body: string; visual: React.Rea
 
 export function Features() {
   return (
-    <section id="features" aria-labelledby="features-title" className="scroll-mt-24 bg-surface py-24 sm:py-28">
+    <section id="features" aria-labelledby="features-title" className="scroll-mt-24 bg-surface py-20 sm:py-24">
       <Container>
-        <div className="reveal">
+        <div className="">
           <SectionHeading
             id="features-title"
             kicker="Features"
@@ -71,21 +71,18 @@ export function Features() {
             intro="Atlas is designed around one idea: you should be able to see where every conclusion came from."
           />
         </div>
-        <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
           {FEATURES.map((f) => (
             <article
               key={f.title}
               className={cx(
-                "reveal spotlight group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-linear-to-b from-slate-50 to-surface p-6 transition-shadow hover:shadow-[0_30px_60px_-30px_rgb(15_23_42/0.25)] sm:p-7",
+                "flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-surface p-6",
                 f.span,
                 f.wide && "sm:col-span-2 lg:grid lg:grid-cols-[1fr_1.1fr] lg:items-center lg:gap-10",
               )}
             >
               <div>
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface text-indigo-700 shadow-xs ring-1 ring-slate-200">
-                  <Icon name={f.icon} className="h-4.5 w-4.5" />
-                </span>
-                <h3 className="mt-5 text-xl font-semibold tracking-tight text-slate-950">{f.title}</h3>
+                <h3 className="text-lg font-semibold tracking-tight text-slate-950">{f.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.body}</p>
               </div>
               <div className={cx("min-w-0", f.wide ? "mt-6 lg:mt-0" : "mt-6 flex-1")}>{f.visual}</div>

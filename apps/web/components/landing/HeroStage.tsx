@@ -66,7 +66,7 @@ export function HeroStage({ className }: { className?: string }) {
       ref={stage}
       onPointerMove={lean}
       className={cx(
-        "hero-film relative isolate overflow-hidden rounded-[1.75rem] border border-current/10 bg-[#c9cfba] text-slate-950",
+        "hero-film relative isolate overflow-hidden rounded-xl border border-current/10 bg-[#c9cfba] text-slate-950",
         className,
       )}
     >
@@ -101,7 +101,7 @@ export function HeroStage({ className }: { className?: string }) {
           type="button"
           onClick={replay}
           className={cx(
-            "absolute top-4 right-4 z-10 min-h-9 cursor-pointer rounded-full border border-black/10 bg-white/55 px-3.5 font-mono text-[10px] tracking-[0.16em] text-ink-950 uppercase backdrop-blur-md transition-all duration-500 hover:bg-white/80",
+            "absolute top-4 right-4 z-10 min-h-9 cursor-pointer rounded-full border border-black/10 bg-white/55 px-4 font-mono text-2xs tracking-label text-ink-950 uppercase backdrop-blur-md transition-all duration-500 hover:bg-white/80",
             ended ? "opacity-100" : "pointer-events-none translate-y-1 opacity-0",
           )}
           tabIndex={ended ? 0 : -1}

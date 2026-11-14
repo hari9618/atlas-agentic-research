@@ -8,22 +8,17 @@ const TRUST = ["Every claim cited", "Both sides argued", "You approve the final 
 export function FinalCta() {
   return (
     <section aria-labelledby="cta-title" className="bg-slate-50 px-3 pb-6 sm:px-6">
-      <div className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-ink-950 px-6 py-16 text-white sm:px-10 sm:py-24">
-        <div aria-hidden className="absolute inset-0 -z-10 bg-grid" />
-        <div
-          aria-hidden
-          className="absolute -bottom-56 left-1/2 -z-10 h-[34rem] w-[60rem] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(190_235_70/0.45),transparent)]"
-        />
-        <div className="reveal mx-auto max-w-2xl text-center">
-          <h2 id="cta-title" className="font-display text-4xl leading-[1.02] tracking-tight text-balance sm:text-6xl">
-            Know the company <em className="text-shine pr-1">before you commit.</em>
+      <div className="mx-auto max-w-6xl rounded-xl bg-ink-950 px-6 py-16 text-white sm:px-10 sm:py-20">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 id="cta-title" className="text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
+            Ask about a company you need to decide on.
           </h2>
           <p className="mt-5 text-lg text-slate-400">
-            Ask your first question. You&apos;ll have a cited draft to review in minutes.
+            Say who you are and what you need to know. You&apos;ll have a cited draft to review in about two minutes.
           </p>
           <Form
             action="/research"
-            className="mx-auto mt-9 flex max-w-xl items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] p-1.5 pl-5 backdrop-blur-md transition-colors focus-within:border-indigo-400/60"
+            className="mx-auto mt-9 flex max-w-xl items-center gap-2 rounded-lg border border-white/15 bg-white/[0.06] p-2 pl-4 transition-colors focus-within:border-indigo-400/60"
           >
             <label htmlFor="cta-q" className="sr-only">
               Company or question
@@ -35,12 +30,12 @@ export function FinalCta() {
               required
               minLength={3}
               autoComplete="off"
-              placeholder="e.g. How does Stripe compare to Adyen?"
-              className="w-full min-w-0 flex-1 bg-transparent py-2 text-base text-white placeholder:text-slate-500 focus:outline-none"
+              placeholder="e.g. Is linear.app a good investment?"
+              className="w-full min-w-0 flex-1 bg-transparent py-2 text-base text-white placeholder:text-slate-400 focus:outline-none"
             />
             <button
               type="submit"
-              className="inline-flex shrink-0 items-center gap-2 rounded-full bg-surface px-4 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:bg-indigo-50 sm:px-5"
+              className="inline-flex shrink-0 items-center gap-2 rounded-md bg-accent-400 px-4 py-2 text-sm font-medium text-ink-950 transition-colors hover:bg-accent-300 sm:px-5"
             >
               <span className="hidden sm:inline">Research</span>
               <Icon name="arrowRight" />

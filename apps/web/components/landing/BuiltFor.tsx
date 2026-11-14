@@ -1,69 +1,85 @@
 import Link from "next/link";
 import { Container } from "@/components/ui/Container";
-import { Icon, type IconName } from "@/components/ui/Icon";
+import { Icon } from "@/components/ui/Icon";
 import { SectionHeading } from "./SectionHeading";
 
-const AUDIENCES: { icon: IconName; title: string; body: string; ask: string }[] = [
+// The personas the backend recognises (plus "general"). Each row says what changes in
+// the brief for that reader, with a question that triggers it.
+const PERSONAS: { who: string; gets: string; ask: string }[] = [
   {
-    icon: "trending",
-    title: "Investors",
-    body: "Pressure-test a thesis before the committee meeting, with both sides argued.",
-    ask: "Should I invest in NVIDIA?",
+    who: "Competitor",
+    gets: "A threat level, a side-by-side table against your company, and where they are weak.",
+    ask: "My company is caughtleads.com. Should I worry about revsquad.ai?",
   },
   {
-    icon: "target",
-    title: "Founders & operators",
-    body: "Know exactly who you compete with, where they're strong and where they lag.",
-    ask: "How does Stripe compare to Adyen?",
+    who: "Buyer",
+    gets: "Plans and published prices, what customers praise and complain about, and red flags.",
+    ask: "Should we buy from gong.io? What does it cost for 20 reps?",
   },
   {
-    icon: "building",
-    title: "Corporate development",
-    body: "A cited first look at an acquisition or partnership target, in minutes.",
-    ask: "Evaluate Infosys as an acquisition partner",
+    who: "Investor",
+    gets: "Traction, funding and team signals, both sides of the case, and what is still unknown.",
+    ask: "Is linear.app a good investment?",
   },
   {
-    icon: "briefcase",
-    title: "Sales & partnerships",
-    body: "Walk into the meeting knowing their growth, news and priorities.",
-    ask: "Reliance Industries: recent developments",
+    who: "Partner",
+    gets: "Who they sell to, how they make money, and whether the fit holds up.",
+    ask: "Would partnering with resend.com make sense for our email product?",
+  },
+  {
+    who: "Job seeker",
+    gets: "Funding, team growth, recent news and what employees say.",
+    ask: "I have an offer from posthog.com. Is it a stable place to join?",
   },
 ];
 
 export function BuiltFor() {
   return (
-    <section id="built-for" aria-labelledby="built-for-title" className="relative scroll-mt-24 bg-surface py-24 sm:py-28">
+    <section id="built-for" aria-labelledby="built-for-title" className="scroll-mt-24 bg-surface py-20 sm:py-24">
       <Container>
-        <div className="reveal">
-          <SectionHeading
-            id="built-for-title"
-            kicker="Who it's for"
-            title="One brief, read by everyone"
-            accent="who needs the facts."
-            intro="Built for people who make decisions about companies and can't afford to guess."
-          />
+        <SectionHeading
+          id="built-for-title"
+          kicker="Who it's for"
+          title="The brief changes with who is asking."
+          intro="Say who you are in the question. Atlas answers your question first; everything after it is the evidence."
+        />
+        <div className="mt-10 overflow-hidden rounded-xl border border-slate-200/80">
+          <table className="w-full text-left">
+            <caption className="sr-only">What each kind of reader gets, with an example question</caption>
+            <thead className="hidden border-b border-slate-200/80 bg-slate-50 md:table-header-group">
+              <tr className="font-mono text-2xs tracking-label text-slate-500 uppercase">
+                <th scope="col" className="px-5 py-3 font-medium">
+                  If you are a
+                </th>
+                <th scope="col" className="px-5 py-3 font-medium">
+                  You get
+                </th>
+                <th scope="col" className="px-5 py-3 font-medium">
+                  Try asking
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200/80">
+              {PERSONAS.map((p) => (
+                <tr key={p.who} className="grid gap-1 px-5 py-4 md:table-row md:p-0">
+                  <th scope="row" className="text-sm font-semibold text-slate-950 md:w-36 md:px-5 md:py-4 md:align-top">
+                    {p.who}
+                  </th>
+                  <td className="text-sm leading-relaxed text-slate-600 md:px-5 md:py-4 md:align-top">{p.gets}</td>
+                  <td className="pt-1 md:w-[26rem] md:px-5 md:py-4 md:align-top">
+                    <Link
+                      href={`/research?q=${encodeURIComponent(p.ask)}`}
+                      className="inline-flex items-start gap-2 text-sm text-indigo-700 hover:underline"
+                    >
+                      <span>{p.ask}</span>
+                      <Icon name="arrowRight" className="mt-1 h-3.5 w-3.5 shrink-0" />
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <ul className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {AUDIENCES.map((a) => (
-            <li
-              key={a.title}
-              className="reveal spotlight group relative flex min-w-0 flex-col rounded-2xl border border-slate-200/80 bg-linear-to-b from-surface to-slate-50/80 p-6 transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_20px_50px_-24px_rgb(190_235_70/0.35)]"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ink-950 text-indigo-200 shadow-[inset_0_1px_0_rgb(255_255_255/0.15)]">
-                <Icon name={a.icon} className="h-5 w-5" />
-              </span>
-              <h3 className="mt-5 text-lg font-semibold tracking-tight text-slate-950">{a.title}</h3>
-              <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{a.body}</p>
-              <Link
-                href={`/research?q=${encodeURIComponent(a.ask)}`}
-                className="mt-5 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-surface px-3 py-2 text-xs text-slate-600 transition-colors group-hover:border-indigo-200 hover:text-indigo-700"
-              >
-                <span className="min-w-0 font-mono leading-snug">&ldquo;{a.ask}&rdquo;</span>
-                <Icon name="arrowRight" className="h-3.5 w-3.5 shrink-0" />
-              </Link>
-            </li>
-          ))}
-        </ul>
       </Container>
     </section>
   );

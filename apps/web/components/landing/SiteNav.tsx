@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { Icon } from "@/components/ui/Icon";
+import { NavSession } from "@/components/auth/NavSession";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Wordmark } from "./Wordmark";
 
@@ -11,7 +10,8 @@ const LINKS = [
   { href: "#faq", label: "FAQ" },
 ];
 
-/** Hairline nav. Section links collapse away on small screens; the theme switch and CTA stay. */
+/** Hairline nav. Section links collapse away on small screens; the theme switch and CTA
+ *  stay. The CTA is a small client island that knows whether you're signed in. */
 export function SiteNav() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-current/10 bg-surface/90 text-slate-950 backdrop-blur-lg">
@@ -23,7 +23,7 @@ export function SiteNav() {
               <li key={l.href}>
                 <a
                   href={l.href}
-                  className="link-rule py-1 font-mono text-[11px] tracking-[0.16em] text-slate-800 uppercase"
+                  className="py-1 text-sm text-slate-700 transition-colors hover:text-slate-950"
                 >
                   {l.label}
                 </a>
@@ -33,14 +33,7 @@ export function SiteNav() {
         </nav>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <Link
-            href="/research"
-            className="inline-flex min-h-10 items-center gap-2 rounded-full bg-accent-400 px-4 text-sm font-semibold text-ink-950 transition-colors hover:bg-accent-300"
-          >
-            <span className="hidden sm:inline">Research a company</span>
-            <span className="sm:hidden">Start</span>
-            <Icon name="arrowRight" />
-          </Link>
+          <NavSession />
         </div>
       </div>
     </header>

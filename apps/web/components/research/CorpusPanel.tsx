@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { API } from "@/lib/api";
+import { authFetch } from "@/lib/auth";
+import { isAdmin } from "@/lib/auth-common";
+import { failureFromResponse } from "@/lib/http";
+import { useSession } from "@/lib/use-session";
 import { Icon } from "@/components/ui/Icon";
 import { btn, cx, surface } from "@/components/ui/styles";
 
@@ -10,16 +13,32 @@ type CorpusStatus = { documents: CorpusDoc[]; document_count: number; chunk_coun
 
 async function fetchStatus(): Promise<CorpusStatus | null> {
   try {
-    const r = await fetch(`${API}/corpus/status`);
+    const r = await authFetch("/corpus/status", { cache: "no-store" });
     return r.ok ? ((await r.json()) as CorpusStatus) : null;
   } catch {
     return null; // backend not up yet: the panel just shows no count
   }
 }
 
+/** The backend's message for a failed ingest, or our classified copy (403 → admins only). */
+async function errorOf(res: Response): Promise<string> {
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  const b = (body ?? {}) as { error?: unknown };
+  if (res.ok && typeof b.error === "string") return b.error;
+  return failureFromResponse(res.status, body, res.headers).message;
+}
+
 /** "Your documents": add evidence the agents can search (upload a file, or pull a real
- *  SEC filing by ticker). Ingested documents are searchable on the very next run. */
+ *  SEC filing by ticker). Ingested documents are searchable on the very next run.
+ *  Everyone can see what's indexed; changing the shared index is admin-only. */
 export function CorpusPanel() {
+  const { user } = useSession();
+  const admin = isAdmin(user);
   const [status, setStatus] = useState<CorpusStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -41,6 +60,10 @@ export function CorpusPanel() {
     setMsg(null);
     try {
       const res = await run();
+      if (!res.ok) {
+        setMsg({ ok: false, text: await errorOf(res) });
+        return;
+      }
       const data = await res.json();
       if (data.error) {
         setMsg({ ok: false, text: data.error });
@@ -66,7 +89,7 @@ export function CorpusPanel() {
     if (!file) return;
     const body = new FormData();
     body.append("file", file);
-    handle(() => fetch(`${API}/corpus/upload`, { method: "POST", body }));
+    handle(() => authFetch("/corpus/upload", { method: "POST", body }));
     e.target.value = "";
   };
 
@@ -74,7 +97,7 @@ export function CorpusPanel() {
     e?.preventDefault();
     if (!ticker.trim()) return;
     handle(() =>
-      fetch(`${API}/corpus/sec`, {
+      authFetch("/corpus/sec", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker: ticker.trim(), form: "10-K" }),
@@ -88,7 +111,11 @@ export function CorpusPanel() {
     setBusy(true);
     setMsg(null);
     try {
-      await fetch(`${API}/corpus`, { method: "DELETE" });
+      const res = await authFetch("/corpus", { method: "DELETE" });
+      if (!res.ok) {
+        setMsg({ ok: false, text: await errorOf(res) });
+        return;
+      }
       setMsg({ ok: true, text: "All documents removed." });
       refresh();
     } catch (e) {
@@ -100,7 +127,7 @@ export function CorpusPanel() {
 
   return (
     <details className={cx(surface, "group @container px-4 sm:px-5")}>
-      <summary className="flex items-center justify-between gap-3 py-3.5">
+      <summary className="flex items-center justify-between gap-3 py-4">
         <span className="flex min-w-0 items-center gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
             <Icon name="database" />
@@ -126,50 +153,59 @@ export function CorpusPanel() {
           (a pitch deck, a filing, internal notes) and they become citable on the next run.
         </p>
 
-        <div className="grid gap-3 @lg:grid-cols-2">
-          <div className="rounded-lg border border-dashed border-slate-300 p-4">
-            <p className="text-sm font-medium text-slate-900">Upload a document</p>
-            <p className="mt-0.5 text-xs text-slate-500">PDF, Word, Markdown or text, up to 10 MB</p>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              className={cx(btn.small, "mt-3")}
-            >
-              <Icon name="upload" className="h-3.5 w-3.5" />
-              Choose file
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".md,.txt,.markdown,.pdf,.docx"
-              onChange={onFile}
-              className="sr-only"
-              tabIndex={-1}
-              aria-label="Upload a document"
-            />
-          </div>
+        {!admin && (
+          <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm text-slate-600">
+            <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            The document index is shared by everyone on this demo, so adding or removing documents is limited to admins.
+          </p>
+        )}
 
-          <form onSubmit={onTicker} className="rounded-lg border border-dashed border-slate-300 p-4">
-            <label htmlFor="sec-ticker" className="text-sm font-medium text-slate-900">
-              Pull a 10-K from SEC EDGAR
-            </label>
-            <p className="mt-0.5 text-xs text-slate-500">Enter a US stock ticker</p>
-            <div className="mt-3 flex gap-2">
-              <input
-                id="sec-ticker"
-                value={ticker}
-                onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                placeholder="e.g. AAPL"
-                autoComplete="off"
-                className="w-full min-w-0 rounded-lg border border-slate-300 bg-surface px-3 py-1.5 text-sm uppercase placeholder:normal-case placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
-              />
-              <button type="submit" disabled={busy || !ticker.trim()} className={btn.small}>
-                Fetch
+        {admin && (
+          <div className="grid gap-3 @lg:grid-cols-2">
+            <div className="rounded-lg border border-dashed border-slate-300 p-4">
+              <p className="text-sm font-medium text-slate-900">Upload a document</p>
+              <p className="mt-0.5 text-xs text-slate-500">PDF, Word, Markdown or text, up to 10 MB</p>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+                className={cx(btn.small, "mt-3")}
+              >
+                <Icon name="upload" className="h-3.5 w-3.5" />
+                Choose file
               </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".md,.txt,.markdown,.pdf,.docx"
+                onChange={onFile}
+                className="sr-only"
+                tabIndex={-1}
+                aria-label="Upload a document"
+              />
             </div>
-          </form>
-        </div>
+
+            <form onSubmit={onTicker} className="rounded-lg border border-dashed border-slate-300 p-4">
+              <label htmlFor="sec-ticker" className="text-sm font-medium text-slate-900">
+                Pull a 10-K from SEC EDGAR
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">Enter a US stock ticker</p>
+              <div className="mt-3 flex gap-2">
+                <input
+                  id="sec-ticker"
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                  placeholder="e.g. AAPL"
+                  autoComplete="off"
+                  className="w-full min-w-0 rounded-lg border border-slate-300 bg-surface px-3 py-2 text-sm uppercase placeholder:normal-case placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                />
+                <button type="submit" disabled={busy || !ticker.trim()} className={btn.small}>
+                  Fetch
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div aria-live="polite">
           {busy && <p className="text-sm text-indigo-700">Reading and indexing the document…</p>}
@@ -184,14 +220,16 @@ export function CorpusPanel() {
               <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
                 Indexed documents
               </span>
-              <button
-                type="button"
-                onClick={onClear}
-                disabled={busy}
-                className="text-xs font-medium text-rose-700 hover:underline disabled:opacity-50"
-              >
-                Remove all
-              </button>
+              {admin && (
+                <button
+                  type="button"
+                  onClick={onClear}
+                  disabled={busy}
+                  className="text-xs font-medium text-rose-700 hover:underline disabled:opacity-50"
+                >
+                  Remove all
+                </button>
+              )}
             </div>
             <ul className="max-h-40 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
               {status.documents.map((d) => (
