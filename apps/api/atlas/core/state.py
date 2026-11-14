@@ -28,6 +28,15 @@ class ResearchState(TypedDict, total=False):
     query: str                                   # the user's question
     target: str                                  # company/entity under analysis (supervisor)
     ticker: str                                  # stock ticker if public and known, else ""
+    # ---- research brief (agents/brief.py): who asks, about whom, and why ----
+    subject_domain: str                          # the subject's website domain, if known
+    asker: str                                   # the user's own company, if they said
+    asker_domain: str
+    persona: str                                 # investor | competitor | buyer | ... | general
+    goal: str                                    # the decision the report must support
+    extra_asks: list[str]                        # specific asks beyond the standard brief
+    brief_notes: list[str]                       # caveats from planning (e.g. dropped ticker)
+    degraded: list[str]                          # nodes that fell back (surfaced to the reader)
     prior_context: list[str]                     # episodic memory recalled for this run
     plan: list[str]                              # supervisor's focus areas
     findings: Annotated[list[dict], add_or_reset]  # specialists append here

@@ -13,7 +13,11 @@ The rule is deliberately strict and explainable:
   whole-word phrase in the title or content, **or**
 * the ticker must appear as a whole word, written in capitals as tickers are. One- and
   two-letter tickers ("F", "GE") collide with ordinary text, so they only count in a
-  ticker context such as "$F" or "NYSE: F".
+  ticker context such as "$F" or "NYSE: F", **or**
+* the company's own website domain ("revsquad.ai") appears in the text or is the host
+  of the result's URL. Small private companies are often written about by brand
+  ("RevSquad") while their legal name is unknown — the domain is the one identifier
+  that cannot belong to a different company.
 
 Pure functions, no I/O.
 """
@@ -27,6 +31,11 @@ from dataclasses import dataclass
 # "Industries" etc. are part of the name and are never stripped.
 _LEGAL_SUFFIXES = {
     "inc", "incorporated", "corp", "corporation", "ltd", "limited", "llc", "plc", "co",
+    # India / APAC / Europe: "Zoho Corporation Private Limited", "Acme Pvt Ltd",
+    # "Grab Pte Ltd", "Siemens AG", "Spotify AB" — these are how private companies in
+    # the target markets are registered, and how the supervisor names them.
+    "private", "pvt", "pte", "pty", "llp", "lp", "gmbh", "ag", "sa", "sas", "sarl", "bv",
+    "nv", "kk", "srl", "spa", "oy", "ab", "as", "aps", "sdn", "bhd", "kft", "zrt",
 }
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 # A "target" longer than this is not a company name (e.g. the supervisor's fallback
@@ -36,8 +45,9 @@ _MAX_NAME_WORDS = 6
 
 @dataclass(frozen=True)
 class EntityTerms:
-    name: str     # normalized name phrase, e.g. "reliance industries"
-    ticker: str   # upper-case ticker or ""
+    name: str        # normalized name phrase, e.g. "reliance industries"
+    ticker: str      # upper-case ticker or ""
+    domain: str = ""  # registrable website domain, e.g. "revsquad.ai"
 
 
 def _normalize(text: str) -> str:
@@ -54,7 +64,17 @@ def normalize_name(target: str) -> str:
     return " ".join(words)
 
 
-def entity_terms(target: str, ticker: str = "") -> EntityTerms | None:
+def normalize_domain(value: str) -> str:
+    """``https://www.RevSquad.ai/pricing`` → ``revsquad.ai`` ("" if not a domain)."""
+    v = (value or "").strip().lower()
+    v = re.sub(r"^[a-z]+://", "", v).split("/")[0].split("?")[0].split("#")[0]
+    v = v.split("@")[-1].split(":")[0].strip(".")
+    if v.startswith("www."):
+        v = v[4:]
+    return v if re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z]{2,24}", v) else ""
+
+
+def entity_terms(target: str, ticker: str = "", domain: str = "") -> EntityTerms | None:
     """Matching terms for the company, or None when there is nothing safe to match on."""
     name = normalize_name(target)
     if len(name.split()) > _MAX_NAME_WORDS:
@@ -65,9 +85,10 @@ def entity_terms(target: str, ticker: str = "") -> EntityTerms | None:
     # match an all-caps "RELIANCE POWER" headline. Match those companies by name only.
     if "." in tick:
         tick = ""
-    if not (name or tick):
+    dom = normalize_domain(domain)
+    if not (name or tick or dom):
         return None
-    return EntityTerms(name=name, ticker=tick)
+    return EntityTerms(name=name, ticker=tick, domain=dom)
 
 
 def _ticker_in(text: str, ticker: str) -> bool:
@@ -79,10 +100,18 @@ def _ticker_in(text: str, ticker: str) -> bool:
     return re.search(pattern, text or "") is not None
 
 
-def mentions_entity(text: str, terms: EntityTerms | None) -> bool:
-    """True if ``text`` is about the company described by ``terms`` (None → True)."""
+def mentions_entity(text: str, terms: EntityTerms | None, url: str = "") -> bool:
+    """True if ``text`` (or the result's ``url``) is about the company in ``terms``."""
     if terms is None:
         return True
+    if terms.domain:
+        host = normalize_domain(url)
+        if host and (host == terms.domain or host.endswith("." + terms.domain)):
+            return True
+        # Whole domain only: "acme.io" must not match "notacme.io" or "acme.io.evil".
+        if re.search(rf"(?<![a-z0-9.-]){re.escape(terms.domain)}(?![a-z0-9-]|\.[a-z])",
+                     (text or "").lower()):
+            return True
     if terms.name and f" {terms.name} " in f" {_normalize(text)} ":
         return True
     return bool(terms.ticker) and _ticker_in(text, terms.ticker)

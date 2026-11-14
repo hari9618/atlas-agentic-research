@@ -70,6 +70,18 @@ def _is_duplicate(lesson: str, existing: list[str]) -> bool:
     return False
 
 
+_UNSAFE = re.compile(
+    r"https?://|www\.|\b[a-z0-9-]+\.(?:com|ai|io|net|org|co|xyz|app)\b|@|"
+    r"ignore (?:all|previous|the)|system prompt|disregard|always (?:say|recommend|rate)|"
+    r"never mention|contact|visit|click", re.I)
+
+
+def safe_lesson(text: str) -> bool:
+    """Lessons come from reviewer text (user input) and go into every user's prompts:
+    no links, addresses or instruction-hijacking phrasing."""
+    return not _UNSAFE.search(text or "")
+
+
 def distil_lesson(component: str, kind: str, examples: list[str]) -> str:
     """One short imperative rule that would have prevented these failures."""
     fallback = _TEMPLATE_LESSONS.get(kind, _TEMPLATE_LESSONS["reviewer_feedback"])
@@ -91,7 +103,7 @@ def distil_lesson(component: str, kind: str, examples: list[str]) -> str:
         )
         text = (resp.content if hasattr(resp, "content") else str(resp)).strip()
         text = text.strip("\"'` -•").splitlines()[0].strip() if text else ""
-        if 15 <= len(text) <= _MAX_LESSON_CHARS:
+        if 15 <= len(text) <= _MAX_LESSON_CHARS and safe_lesson(text):
             return text
         log.warning("lesson proposal rejected (%d chars)", len(text))
     except Exception as exc:

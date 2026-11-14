@@ -11,7 +11,7 @@ import logging
 import re
 
 from ..rag.loaders.sec_edgar import fetch_latest_filing
-from ..resilience import TOOL_ATTEMPTS, retry_call
+from ..upstreams import SEC_EDGAR
 from .symbols import is_us_listed
 
 log = logging.getLogger("atlas.tools.sec")
@@ -53,9 +53,10 @@ def _business_excerpt(text: str, max_chars: int, pattern: re.Pattern = _BUSINESS
 
 
 def _fetch(ticker: str, form: str, max_chars: int):
-    return retry_call(fetch_latest_filing, ticker, form=form,
-                      max_chars=max(max_chars, _SCAN_CHARS.get(form, 150_000)),
-                      attempts=TOOL_ATTEMPTS, label=f"tool.sec_filing_excerpt.{form}")
+    scan = max(max_chars, _SCAN_CHARS.get(form, 150_000))
+    return SEC_EDGAR.call(fetch_latest_filing, ticker, form=form, max_chars=scan,
+                          cache_key=(ticker.upper(), form, scan),
+                          label=f"tool.sec_filing_excerpt.{form}")
 
 
 def sec_filing_excerpt(ticker: str, *, form: str = "10-K", max_chars: int = 2000) -> dict:

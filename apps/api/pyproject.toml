@@ -36,6 +36,12 @@ dependencies = [
     # retry with exponential backoff + jitter for transient failures (core/resilience.py)
     "tenacity>=8.2",
 
+    # --- auth + scale-out (atlas/security, core/coordination.py) ---
+    "pyjwt>=2.8",               # short-lived HS256 access tokens
+    "argon2-cffi>=23.1",        # Argon2id password hashing (OWASP first choice)
+    "email-validator>=2.1",     # pydantic EmailStr
+    "redis>=5.0",               # shared rate limits / leases across instances
+
     # --- observability ---
     "langfuse>=2.50,<3",
 
@@ -62,6 +68,10 @@ dev = [
 eval = [
     "ragas>=0.2",
     "datasets>=3.0",
+]
+# Live agentic evaluation (evals/agentic): DeepEval metrics judged by the Groq model.
+agent-eval = [
+    "deepeval>=4.3,<5",
 ]
 
 [tool.ruff]
@@ -90,6 +100,9 @@ ignore = [
 # asyncio_mode is re-added with pytest-asyncio once we have async-native tests.
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "real_auth: run against real authentication instead of the signed-in-admin override",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

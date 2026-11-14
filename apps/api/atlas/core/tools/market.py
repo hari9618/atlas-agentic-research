@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from ..resilience import TOOL_ATTEMPTS, retry_call
+from ..upstreams import STOOQ, YAHOO
 from .symbols import clean_ticker, is_us_listed, market_of
 from .web_search import web_search
 
@@ -55,7 +55,7 @@ def _fetch_stooq(symbol: str) -> str:
 
 
 def _yahoo_quote(symbol: str) -> dict:
-    data = retry_call(_fetch_yahoo, symbol, attempts=TOOL_ATTEMPTS, label="tool.stock_quote.yahoo")
+    data = YAHOO.call(_fetch_yahoo, symbol, cache_key=symbol, label="tool.stock_quote.yahoo")
     result = ((data or {}).get("chart") or {}).get("result") or []
     if not result:
         return {}
@@ -92,7 +92,7 @@ def _yahoo_quote(symbol: str) -> dict:
 
 
 def _stooq_quote(symbol: str) -> dict:
-    text = retry_call(_fetch_stooq, symbol, attempts=TOOL_ATTEMPTS, label="tool.stock_quote.stooq")
+    text = STOOQ.call(_fetch_stooq, symbol, cache_key=symbol, label="tool.stock_quote.stooq")
     lines = text.strip().splitlines()
     if len(lines) < 2:
         return {}

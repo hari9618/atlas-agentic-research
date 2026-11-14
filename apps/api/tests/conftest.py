@@ -23,3 +23,43 @@ os.environ["DATABASE_URL"] = ""
 # The learning loop's records/policies/experiments go to a throwaway directory, so
 # test runs never pollute the real data/cache/llmops history.
 os.environ["ATLAS_LLMOPS_DIR"] = tempfile.mkdtemp(prefix="atlas-llmops-")
+# Checkpoints, episodic memory and the auth DB too: graph tests used to write into the
+# real data/cache, polluting dev memory and making recall order-dependent.
+os.environ["ATLAS_CACHE_DIR"] = tempfile.mkdtemp(prefix="atlas-cache-")
+# Quotas are exercised by their own tests (tests/test_security.py), which turn them on;
+# elsewhere a suite that runs dozens of research runs as one user must not trip them.
+os.environ.setdefault("RATE_LIMITS_ENABLED", "0")
+# A fixed signing key, so token tests never fall back to a database-stored one.
+os.environ.setdefault("AUTH_JWT_SECRET", "test-signing-key-0123456789-abcdefghijklmnopqrstuvwxyz")
+# A fixed data-encryption key (32 zero-ish bytes, urlsafe base64) so encrypted test
+# rows never depend on a developer's local key file.
+os.environ.setdefault("DATA_ENCRYPTION_KEY", "dGVzdC1rZXktdGVzdC1rZXktdGVzdC1rZXktMzJieXQ")
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _fresh_upstreams():
+    """Upstream caches/breakers are process-global; a cached search result or an open
+    circuit from one test must never leak into the next."""
+    from atlas.core.upstreams import reset_all
+
+    reset_all()
+    yield
+    reset_all()
+
+
+@pytest.fixture(autouse=True)
+def _signed_in(request):
+    """Router tests written before auth act as a signed-in admin. Tests that exercise
+    real authentication opt out with ``@pytest.mark.real_auth``."""
+    if request.node.get_closest_marker("real_auth"):
+        yield
+        return
+    from atlas.main import app
+    from atlas.security.deps import Principal, current_user
+
+    app.dependency_overrides[current_user] = lambda: Principal(
+        id="test-user", role="admin", email="tester@example.com")
+    yield
+    app.dependency_overrides.pop(current_user, None)

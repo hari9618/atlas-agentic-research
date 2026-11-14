@@ -1,6 +1,6 @@
 """The Atlas research graph (design §3) and the run driver.
 
-    recall → supervisor → [fundamentals ‖ news_sentiment ‖ risk ‖ market]
+    supervisor → recall → [fundamentals ‖ news_sentiment ‖ risk ‖ market]
            → debate_round → synthesize → human_review
     human_review: approve / auto → remember → END
     human_review: revise         → revise_research → synthesize   (capped at max_revisions)
@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
@@ -59,10 +60,13 @@ def build_graph():
     g.add_node("revise_research", revise_research_node)  # feedback-driven research
     g.add_node("remember", remember_node)
 
-    g.add_edge(START, "recall")
-    g.add_edge("recall", "supervisor")
+    # The brief comes first: memory is recalled for THIS subject and THIS user, which
+    # needs the subject identified (it used to be recalled by raw-question similarity,
+    # pulling other companies' — and other users' — reports into the prompt).
+    g.add_edge(START, "supervisor")
+    g.add_edge("supervisor", "recall")
     for name in SPECIALIST_NODES:
-        g.add_edge("supervisor", name)      # fan-out: specialists run in parallel
+        g.add_edge("recall", name)          # fan-out: specialists run in parallel
         g.add_edge(name, "debate_round")    # fan-in: debate waits for all of them
     g.add_edge("debate_round", "synthesize")
     g.add_edge("synthesize", "human_review")
@@ -149,7 +153,20 @@ def _drive(graph, inp, config: dict, thread_id: str, *, record: bool = True) -> 
     # After the report reached the user: evaluate and record the run. Best-effort —
     # learning bookkeeping must never fail a research run.
     if record:
-        _record_run(values, thread_id, result)
+        # Off the stream: scoring makes several judge calls. Run inline, it held the
+        # user's run slot (capacity) and was cancelled when the client closed on
+        # `final`. A small bounded pool keeps the learning bookkeeping best-effort.
+        _RECORDER.submit(_record_run, values, thread_id, result)
+
+
+_RECORDER = ThreadPoolExecutor(max_workers=2, thread_name_prefix="atlas-record")
+
+
+def drain_recorder(timeout: float = 30.0) -> None:
+    """Wait for queued run records (tests, graceful shutdown)."""
+    global _RECORDER
+    _RECORDER.shutdown(wait=True, cancel_futures=False)
+    _RECORDER = ThreadPoolExecutor(max_workers=2, thread_name_prefix="atlas-record")
 
 
 def _record_run(values: dict, thread_id: str, result: dict) -> None:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from langchain_core.runnables import RunnableConfig
+
 from ...config import get_settings
 from ..resources import get_episodic, get_index
 from ..state import ResearchState
@@ -12,20 +14,23 @@ from .summarizer import consolidate
 log = logging.getLogger("atlas.memory.nodes")
 
 
-def recall_node(state: ResearchState) -> dict:
-    """Pull relevant and recent past runs into this run's working memory."""
-    mem = get_episodic()
-    ctx, seen = [], set()
-    for e in mem.relevant(state["query"], limit=2) + mem.recent(limit=1):
-        if e.id not in seen:
-            seen.add(e.id)
-            ctx.append(e.summary())
+def owner_of(config: RunnableConfig | None) -> str:
+    """The user a run belongs to: the prefix of its user-scoped thread id
+    (``routers/research.scoped_thread``). Unscoped (CLI/test) runs have no owner."""
+    thread = str(((config or {}).get("configurable") or {}).get("thread_id") or "")
+    return thread.split(":", 1)[0] if ":" in thread else ""
+
+
+def recall_node(state: ResearchState, config: RunnableConfig | None = None) -> dict:
+    """This user's earlier runs on this same company, as working memory."""
+    episodes = get_episodic().for_subject(owner_of(config), state.get("target") or "")
+    ctx = [e.summary() for e in episodes]
     if ctx:
-        log.info("Recalled %d prior episode(s) for this run", len(ctx))
+        log.info("Recalled %d prior episode(s) on this subject", len(ctx))
     return {"prior_context": ctx}
 
 
-def remember_node(state: ResearchState) -> dict:
+def remember_node(state: ResearchState, config: RunnableConfig | None = None) -> dict:
     """Save an accepted run to episodic memory; periodically consolidate into facts.
 
     Only approved (or auto-approved) reports reach this node: a rejected report is
@@ -38,6 +43,7 @@ def remember_node(state: ResearchState) -> dict:
         confidence=state.get("confidence"),
         findings=state.get("findings", []),
         target=state.get("target", ""),
+        owner=owner_of(config),
     )
     every = get_settings().memory_consolidate_every
     if every and mem.count() % every == 0:

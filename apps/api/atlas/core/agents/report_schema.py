@@ -115,11 +115,19 @@ def _placeholder(text: str) -> bool:
     return _str(text).lower().strip(" .") in _PLACEHOLDERS
 
 
+def _optional(value) -> str:
+    """An optional field (date, change) with filler blanked: a placeholder date once
+    rendered as "Not enough evidence yet. · Terms of Service published" (seen live)."""
+    text = _str(value)
+    return "" if _placeholder(text) else text
+
+
 def _metric(m: dict) -> dict | None:
     label, value = _str(m.get("label") or m.get("name")), _str(m.get("value"))
     if not (label and value) or _placeholder(label) or _placeholder(value):
         return None
-    return {"label": label, "value": value, "change": _str(m.get("change")), "citation": _cite(m)}
+    return {"label": label, "value": value, "change": _optional(m.get("change")),
+            "citation": _cite(m)}
 
 
 def _competitor(c: dict) -> dict | None:
@@ -134,7 +142,7 @@ def _development(d: dict) -> dict | None:
     title, detail = _str(d.get("title") or d.get("_text")), _str(d.get("detail"))
     if _placeholder(title) and _placeholder(detail):
         return None
-    return {"date": _str(d.get("date")), "title": title or detail[:80], "detail": detail,
+    return {"date": _optional(d.get("date")), "title": title or detail[:80], "detail": detail,
             "sentiment": _enum(d.get("sentiment"), TONES, "neutral",
                                {"bullish": "positive", "bearish": "negative", "mixed": "neutral"}),
             "citation": _cite(d)}
@@ -146,6 +154,34 @@ def _risk(r: dict) -> dict | None:
         return None
     return {"title": title or detail[:80], "severity": _enum(r.get("severity"), LEVELS, "medium"),
             "detail": detail, "citation": _cite(r)}
+
+
+EDGES = {"subject", "asker", "even"}
+OVERLAP = {"high", "medium", "low", "none"}
+
+
+def _plan(pl: dict) -> dict | None:
+    name, price = _str(pl.get("name") or pl.get("_text")), _str(pl.get("price"))
+    if (not name or _placeholder(name)) and (not price or _placeholder(price)):
+        return None
+    return {"name": name, "price": price, "notes": _str(pl.get("notes")), "citation": _cite(pl)}
+
+
+def _h2h_row(r: dict) -> dict | None:
+    dim = _str(r.get("dimension") or r.get("_text"))
+    if not dim or _placeholder(dim):
+        return None
+    return {"dimension": dim, "subject": _str(r.get("subject")), "asker": _str(r.get("asker")),
+            "edge": _enum(r.get("edge"), EDGES, "even", {"them": "subject", "us": "asker",
+                                                        "tie": "even", "equal": "even"}),
+            "citation": _cite(r)}
+
+
+def _answer(a: dict) -> dict | None:
+    q, ans = _str(a.get("question") or a.get("_text")), _str(a.get("answer"))
+    if not q or not ans:
+        return None
+    return {"question": q, "answer": ans, "citation": _cite(a)}
 
 
 def clamp_confidence(value: Any, default: float = 0.5) -> float:
@@ -168,12 +204,25 @@ def normalize_sections(raw: Any, *, company: str = "") -> dict | None:
     ov, fin, mp = _dict(raw.get("company_overview")), _dict(raw.get("financials")), \
         _dict(raw.get("market_position"))
     sent, outlook = _dict(raw.get("sentiment")), _dict(raw.get("outlook"))
+    verdict, pricing, h2h = _dict(raw.get("verdict")), _dict(raw.get("pricing")), \
+        _dict(raw.get("head_to_head"))
+    # Strengths/weaknesses are top-level now; older drafts kept them under
+    # market_position — accept either so revisions of old drafts still normalize.
+    strengths = _str_list(raw.get("strengths")) or _str_list(mp.get("strengths"))
+    weaknesses = _str_list(raw.get("weaknesses")) or _str_list(mp.get("weaknesses"))
     sections = {
         "company": _str(raw.get("company")) or company,
         "headline": _str(raw.get("headline")),
         "stance": _enum(raw.get("stance"), STANCES, "neutral"),
         "confidence": clamp_confidence(raw.get("confidence")),
+        "verdict": {"answer": _str(verdict.get("answer")),
+                    "recommendation": _str(verdict.get("recommendation"))[:120]},
         "executive_summary": _str_list(raw.get("executive_summary")),
+        "snapshot": _records(raw.get("snapshot"), _metric),
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "pricing": {"summary": _str(pricing.get("summary")),
+                    "plans": _records(pricing.get("plans"), _plan)},
         "company_overview": {
             "what_they_do": _str(ov.get("what_they_do")),
             "business_model": _str(ov.get("business_model")),
@@ -186,8 +235,8 @@ def normalize_sections(raw: Any, *, company: str = "") -> dict | None:
         },
         "market_position": {
             "summary": _str(mp.get("summary")),
-            "strengths": _str_list(mp.get("strengths")),
-            "weaknesses": _str_list(mp.get("weaknesses")),
+            "strengths": strengths,
+            "weaknesses": weaknesses,
         },
         "competitors": _records(raw.get("competitors"), _competitor),
         "recent_developments": _records(raw.get("recent_developments"), _development),
@@ -196,6 +245,8 @@ def normalize_sections(raw: Any, *, company: str = "") -> dict | None:
                              OVERALL_SENTIMENT, "mixed",
                              {"neutral": "mixed", "bullish": "positive", "bearish": "negative"}),
             "summary": _str(sent.get("summary")),
+            "praise": _str_list(sent.get("praise")),
+            "complaints": _str_list(sent.get("complaints")),
         },
         "risks": _records(raw.get("risks"), _risk),
         "bull_case": _str_list(raw.get("bull_case")),
@@ -205,6 +256,14 @@ def normalize_sections(raw: Any, *, company: str = "") -> dict | None:
             "watch_items": _str_list(outlook.get("watch_items")),
         },
         "bottom_line": _str(raw.get("bottom_line")),
+        "head_to_head": {
+            "asker": _str(h2h.get("asker")),
+            "overlap": _enum(h2h.get("overlap"), OVERLAP, "low",
+                             {"direct": "high", "partial": "medium", "indirect": "low"}),
+            "summary": _str(h2h.get("summary")),
+            "rows": _records(h2h.get("rows"), _h2h_row),
+        },
+        "custom_answers": _records(raw.get("custom_answers"), _answer),
         "uncertainties": _str_list(raw.get("uncertainties")),
     }
     # A reply with no substantive content is a failed generation, not a report.

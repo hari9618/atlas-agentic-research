@@ -50,11 +50,12 @@ def _llm_active() -> bool:
     return get_settings().llm_configured and os.getenv("ATLAS_OFFLINE_LLM") != "1"
 
 
-def benchmark(records: list[dict], k: int, *, prefer: list[str] | None = None) -> list[dict]:
-    """Up to ``k`` recent runs on distinct companies, the ones that showed the issue first."""
-    prefer = prefer or []
+def benchmark(records: list[dict], k: int, *, avoid: list[str] | None = None) -> list[dict]:
+    """Up to ``k`` recent runs on distinct companies; runs in ``avoid`` (the ones the
+    change was derived from) come last, so validation is on held-out runs first."""
+    avoid = avoid or []
     usable = [r for r in records if r.get("findings") and r.get("query")]
-    usable.sort(key=lambda r: (r.get("thread_id") not in prefer,))  # stable: keeps recency
+    usable.sort(key=lambda r: (r.get("thread_id") in avoid,))  # stable: keeps recency
     picked, targets = [], set()
     for r in usable:
         key = (r.get("target") or r["query"]).lower()
@@ -99,8 +100,11 @@ def _specialist_pair(component: str, record: dict, base: Policy, cand: Policy
                      ) -> tuple[float, float]:
     from ..agents.specialists import extract_findings, gather_evidence, merge_evidence
 
+    # Replay with the production brief, so private-company changes are tested on the
+    # same website / review / competitor evidence a real run gets.
     state = {"query": record["query"], "target": record.get("target", ""),
-             "ticker": record.get("ticker", ""), "prior_context": []}
+             "ticker": record.get("ticker", ""), "prior_context": [],
+             **(record.get("brief") or {})}
     tools, crag = gather_evidence(component, state, max(base.top_k, cand.top_k))
     b = extract_findings(component, state, merge_evidence(tools, crag[:base.top_k]), base)
     c = extract_findings(component, state, merge_evidence(tools, crag[:cand.top_k]), cand)
@@ -112,7 +116,8 @@ def _synthesizer_pair(record: dict, base: Policy, cand: Policy) -> tuple[float, 
 
     findings = record.get("findings") or []
     state = {"query": record["query"], "target": record.get("target", ""),
-             "findings": findings, "debate": record.get("debate") or [], "revision": 0}
+             "findings": findings, "debate": record.get("debate") or [], "revision": 0,
+             **(record.get("brief") or {})}
     b = synthesize_with(state, base)["report"]
     c = synthesize_with(state, cand)["report"]
     return score_report(b, findings), score_report(c, findings)
@@ -128,15 +133,18 @@ def run_pair(component: str, record: dict, base: Policy, cand: Policy) -> tuple[
 
 
 def paired_trials(component: str, base: Policy, cand: Policy, records: list[dict], *,
-                  runner: PairRunner = run_pair) -> list[Trial]:
-    """One baseline-vs-candidate trial per benchmark record; failed trials are skipped."""
+                  runner: PairRunner = run_pair) -> tuple[list[Trial], int]:
+    """``(trials, failed)``: one baseline-vs-candidate trial per benchmark record.
+    Failures are counted, not hidden — ``decide`` refuses to conclude when any failed."""
     trials: list[Trial] = []
+    failed = 0
     for r in records:
         try:
             b, c = runner(component, r, base, cand)
         except Exception as exc:
-            log.warning("replay trial on %r failed (%s) — skipped", r.get("query"), exc)
+            failed += 1
+            log.warning("replay trial on %r failed (%s)", r.get("query"), exc)
             continue
         trials.append(Trial(r["query"], r.get("target", ""), b, c))
         log.info("replay %s on %r: baseline=%.3f candidate=%.3f", component, r["query"], b, c)
-    return trials
+    return trials, failed

@@ -30,5 +30,9 @@ def corpus_dir() -> Path:
 
 
 def cache_dir() -> Path:
-    d = data_dir() / "cache"
-    return d
+    """Local state (SQLite checkpoints/memory, dev keys). ``ATLAS_CACHE_DIR`` moves it —
+    tests point it at a temp dir so they never touch a developer's real data."""
+    import os
+
+    override = os.getenv("ATLAS_CACHE_DIR")
+    return Path(override) if override else data_dir() / "cache"

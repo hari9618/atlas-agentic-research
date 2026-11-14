@@ -97,6 +97,23 @@ jobs:
             || { echo "::error::API is not using Postgres — check DATABASE_URL on Render"; exit 1; }
           echo "$r" | jq -e '.checks.web_search.configured == true' >/dev/null \
             || { echo "::error::TAVILY_API_KEY is not set on Render"; exit 1; }
+      - name: Security — auth enforced, encryption on, sessions work
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 "$API_URL/llmops/overview")
+          [ "$code" = "401" ] || { echo "::error::/llmops/overview returned $code without a token (expected 401)"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 -X DELETE "$API_URL/corpus")
+          [ "$code" = "401" ] || { echo "::error::DELETE /corpus returned $code without a token"; exit 1; }
+          r=$(curl -s -m 90 "$API_URL/health/ready")
+          echo "$r" | jq -e '.checks.encryption.keyring == "env"' >/dev/null \
+            || { echo "::error::Encryption key not configured - set DATA_ENCRYPTION_KEY on Render"; exit 1; }
+          # A demo session end to end: guest sign-in, authenticated call, 403 on admin.
+          tok=$(curl -s -m 60 -X POST "$API_URL/auth/guest" -H 'Content-Type: application/json' -d '{}' | jq -r '.access_token // empty')
+          [ -n "$tok" ] || { echo "::error::guest sign-in failed"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 -H "Authorization: Bearer $tok" "$API_URL/auth/me")
+          [ "$code" = "200" ] || { echo "::error::/auth/me returned $code with a valid token"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 -X POST -H "Authorization: Bearer $tok" "$API_URL/llmops/improve")
+          [ "$code" = "403" ] || { echo "::error::guest could call an admin endpoint ($code)"; exit 1; }
+          echo "auth + encryption checks passed"
       - name: Web search actually works (live Tavily probe)
         run: |
           w=$(curl -s -m 90 "$API_URL/health/web")
@@ -139,14 +156,17 @@ jobs:
     steps:
       - name: Pages load
         run: |
-          for path in / /research; do
+          for path in / /login; do
             code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 --retry 3 --retry-all-errors "$WEB_URL$path")
             echo "$path -> $code"
             [ "$code" = "200" ] || { echo "::error::$WEB_URL$path returned $code"; exit 1; }
           done
+          # The app is behind sign-in: an anonymous visit must redirect to /login.
+          loc=$(curl -s -o /dev/null -w "%{redirect_url}" -m 60 "$WEB_URL/research")
+          case "$loc" in *"/login?next="*) echo "/research -> $loc";; *) echo "::error::/research did not redirect to /login (got: ${loc:-none})"; exit 1;; esac
       - name: Frontend points at the production API (not localhost)
         run: |
-          chunks=$(curl -s -m 60 --retry 3 "$WEB_URL/research" | grep -o '/_next/static/chunks/[^"]*\.js' | sort -u)
+          chunks=$(curl -s -m 60 --retry 3 "$WEB_URL/login" | grep -o '/_next/static/chunks/[^"]*\.js' | sort -u)
           for c in $chunks; do
             if curl -s -m 60 "$WEB_URL$c" | grep -q "$API_URL"; then echo "API URL found in $c"; exit 0; fi
           done
@@ -158,6 +178,7 @@ jobs:
           for attempt in 1 2 3; do
             allowed=$(curl -s -m 90 -D - -o /dev/null -X OPTIONS "$API_URL/research/stream" \
               -H "Origin: $WEB_URL" -H "Access-Control-Request-Method: GET" \
+              -H "Access-Control-Request-Headers: authorization" \
               | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
             [ "$allowed" = "$WEB_URL" ] && { echo "CORS allows $WEB_URL"; exit 0; }
             echo "attempt $attempt: access-control-allow-origin=${allowed:-<none>}"; sleep 15

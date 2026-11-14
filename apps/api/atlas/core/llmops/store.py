@@ -6,6 +6,11 @@ One small abstraction instead of three bespoke stores. Each document has a ``kin
 redeploys on ephemeral hosts; otherwise one JSON file per kind under
 ``data/cache/llmops`` (or ``$ATLAS_LLMOPS_DIR``). An explicit ``root`` always means
 JSON (tests).
+
+In Postgres the document body is encrypted (AES-256-GCM, ``security.crypto``): run
+records hold user questions, report drafts and reviewer feedback, and policies hold
+exemplars cut from real reports. The row keeps only ``{id, created_at, _enc}`` in
+clear — exactly what the queries below filter and sort on.
 """
 
 from __future__ import annotations
@@ -80,6 +85,24 @@ class DocumentStore:
         tmp.write_text(json.dumps(docs, indent=1, default=str), encoding="utf-8")
         tmp.replace(self._path)
 
+    # ---- encryption (Postgres backend)
+    def _seal(self, data: dict) -> dict:
+        from ...security.crypto import keyring
+
+        blob = keyring().encrypt(json.dumps(data, default=str), self._ctx)
+        return {"id": data["id"], "created_at": data["created_at"], "_enc": blob}
+
+    def _open(self, row_data: dict) -> dict:
+        if "_enc" not in row_data:
+            return row_data  # written before encryption was enabled
+        from ...security.crypto import keyring
+
+        return json.loads(keyring().decrypt(row_data["_enc"], self._ctx))
+
+    @property
+    def _ctx(self) -> str:
+        return f"atlas_llmops_documents.{self.kind}"
+
     # ---- API
     def put(self, doc_id: str, data: dict) -> None:
         """Insert or replace a document. ``data["created_at"]`` is set if missing."""
@@ -93,7 +116,7 @@ class DocumentStore:
                     "INSERT INTO atlas_llmops_documents (kind, id, data, created_at) "
                     "VALUES (%s, %s, %s, %s) ON CONFLICT (kind, id) "
                     "DO UPDATE SET data = EXCLUDED.data",
-                    (self.kind, doc_id, Jsonb(data), data["created_at"]),
+                    (self.kind, doc_id, Jsonb(self._seal(data)), data["created_at"]),
                 )
             return
         with self._lock:
@@ -110,7 +133,7 @@ class DocumentStore:
                     "SELECT data FROM atlas_llmops_documents WHERE kind = %s AND id = %s",
                     (self.kind, doc_id),
                 ).fetchone()
-            return row["data"] if row else None
+            return self._open(row["data"]) if row else None
         return next((d for d in self._read() if d.get("id") == doc_id), None)
 
     def list(self, limit: int = 50) -> list[dict]:
@@ -122,5 +145,11 @@ class DocumentStore:
                     "ORDER BY created_at DESC LIMIT %s",
                     (self.kind, limit),
                 ).fetchall()
-            return [r["data"] for r in rows]
+            out = []
+            for r in rows:
+                try:
+                    out.append(self._open(r["data"]))
+                except Exception as exc:  # see episodic._fetch: skip, don't fail the list
+                    log.error("%s document unreadable, skipped (%s)", self.kind, exc)
+            return out
         return list(reversed(self._read()))[:limit]

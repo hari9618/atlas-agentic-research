@@ -32,13 +32,24 @@ def render_markdown(s: dict) -> str:
     """Markdown brief from normalized sections (see report_schema.normalize_sections)."""
     out: list[str] = []
     company = s.get("company") or "Company"
-    out += [f"# {company}: Investor Brief", ""]
+    out += [f"# {company}: Due-Diligence Brief", ""]
     if s.get("headline"):
         out += [f"**{s['headline']}**", ""]
     if s.get("stance"):
         out += [f"Overall stance: **{s['stance'].capitalize()}**", ""]
 
+    verdict = s.get("verdict") or {}
+    if verdict.get("answer"):
+        call = f"**{verdict['recommendation']}.** " if verdict.get("recommendation") else ""
+        out += _section("Verdict", [call + verdict["answer"]])
+
     out += _section("Executive Summary", _bullets(s.get("executive_summary", [])))
+
+    snap = [f"- **{m['label']}:** {m['value']}{_cite(m.get('citation', ''))}"
+            for m in s.get("snapshot", [])]
+    out += _section("Snapshot", snap)
+    out += _section("Strengths", _bullets(s.get("strengths", [])))
+    out += _section("Weaknesses and Negatives", _bullets(s.get("weaknesses", [])))
 
     ov = s.get("company_overview") or {}
     ov_body = []
@@ -60,13 +71,16 @@ def render_markdown(s: dict) -> str:
         fin_body.append(f"- **{m['label']}:** {m['value']}{change}{_cite(m.get('citation', ''))}")
     out += _section("Financials", _spaced_block(fin_body))
 
+    pricing = s.get("pricing") or {}
+    pr_body = [pricing["summary"]] if pricing.get("summary") else []
+    for pl in pricing.get("plans", []):
+        notes = f" ({pl['notes']})" if pl.get("notes") else ""
+        pr_body.append(f"- **{pl['name'] or 'Plan'}:** {pl['price'] or 'price not public'}"
+                       f"{notes}{_cite(pl.get('citation', ''))}")
+    out += _section("Pricing", _spaced_block(pr_body))
+
     mp = s.get("market_position") or {}
-    mp_body = [mp["summary"]] if mp.get("summary") else []
-    if mp.get("strengths"):
-        mp_body += ["", "**Strengths**", *_bullets(mp["strengths"])]
-    if mp.get("weaknesses"):
-        mp_body += ["", "**Weaknesses**", *_bullets(mp["weaknesses"])]
-    out += _section("Market Position", mp_body)
+    out += _section("Market Position", [mp["summary"]] if mp.get("summary") else [])
 
     comp_body = []
     for c in s.get("competitors", []):
@@ -84,9 +98,25 @@ def render_markdown(s: dict) -> str:
     out += _section("Recent Developments", dev_body)
 
     sent = s.get("sentiment") or {}
+    sent_body = []
     if sent.get("summary"):
-        out += _section("Sentiment", [f"**Overall: {sent.get('overall', 'mixed').capitalize()}.** "
-                                      f"{sent['summary']}"])
+        sent_body.append(f"**Overall: {sent.get('overall', 'mixed').capitalize()}.** "
+                         f"{sent['summary']}")
+    if sent.get("praise"):
+        sent_body += ["", "**What customers praise**", *_bullets(sent["praise"])]
+    if sent.get("complaints"):
+        sent_body += ["", "**What customers complain about**", *_bullets(sent["complaints"])]
+    out += _section("Customer Sentiment", sent_body)
+
+    h2h = s.get("head_to_head") or {}
+    if h2h.get("asker") and (h2h.get("rows") or h2h.get("summary")):
+        body = [f"**Overlap: {h2h.get('overlap', 'low')}.** {h2h.get('summary', '')}".strip()]
+        for r in h2h.get("rows", []):
+            edge = {"subject": company, "asker": h2h["asker"]}.get(r.get("edge"), "even")
+            body.append(f"- **{r['dimension']}:** {company}: {r.get('subject') or '-'} · "
+                        f"{h2h['asker']}: {r.get('asker') or '-'} (edge: {edge})"
+                        f"{_cite(r.get('citation', ''))}")
+        out += _section(f"{company} vs {h2h['asker']}", _spaced_block(body))
 
     risk_body = []
     for r in s.get("risks", []):
@@ -103,6 +133,10 @@ def render_markdown(s: dict) -> str:
     if outlook.get("watch_items"):
         ol_body += ["", "**What to watch**", *_bullets(outlook["watch_items"])]
     out += _section("Outlook", ol_body)
+
+    answers = [f"- **{a['question']}** {a['answer']}{_cite(a.get('citation', ''))}"
+               for a in s.get("custom_answers", [])]
+    out += _section("Your Questions", answers)
 
     if s.get("bottom_line"):
         out += _section("Bottom Line", [s["bottom_line"]])

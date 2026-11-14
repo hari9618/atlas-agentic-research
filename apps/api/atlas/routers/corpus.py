@@ -13,15 +13,29 @@ from __future__ import annotations
 import logging
 import re
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..core.rag.chunking import chunk_document
 from ..core.rag.extract import extract_text
 from ..core.rag.types import Document
+from ..security import audit
+from ..security.deps import Principal, current_user, require_admin
 
-router = APIRouter(prefix="/corpus", tags=["corpus"])
+# Reading what is indexed needs a session; changing the shared index is admin-only.
+router = APIRouter(prefix="/corpus", tags=["corpus"], dependencies=[Depends(current_user)])
+
+
+async def _audited_admin(request: Request, admin: Principal = Depends(require_admin)) -> Principal:
+    """Admin gate that also leaves an audit trail of every change to the shared index."""
+    await run_in_threadpool(lambda: audit.record(
+        f"admin.corpus.{request.method.lower()}", user_id=admin.id, request=request,
+        path=request.url.path))
+    return admin
+
+
+_admin = [Depends(_audited_admin)]
 log = logging.getLogger("atlas.routers.corpus")
 
 # Documents are parsed to text before indexing (see core/rag/extract.py). PDFs and
@@ -81,7 +95,7 @@ async def status() -> dict:
     }
 
 
-@router.delete("")
+@router.delete("", dependencies=_admin)
 async def clear_corpus() -> dict:
     """Empty the knowledge base so only newly uploaded documents are searchable.
 
@@ -99,7 +113,7 @@ async def clear_corpus() -> dict:
     return {"cleared": True, "chunk_count": remaining}
 
 
-@router.post("/text")
+@router.post("/text", dependencies=_admin)
 async def add_text(req: TextRequest) -> dict:
     """Ingest pasted text (a report, a profile, notes)."""
     doc = Document(
@@ -112,11 +126,11 @@ async def add_text(req: TextRequest) -> dict:
     return await run_in_threadpool(_add, doc)
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=_admin)
 async def upload(file: UploadFile = File(...)) -> dict:
     """Ingest an uploaded document — .txt, .md, .pdf, or .docx."""
     name = file.filename or "upload.txt"
-    raw = await file.read()
+    raw = await file.read(MAX_BYTES + 1)  # never buffer more than the cap
     if len(raw) > MAX_BYTES:
         return {"error": f"File too large (max {MAX_BYTES // 1_000_000} MB)."}
 
@@ -129,7 +143,7 @@ async def upload(file: UploadFile = File(...)) -> dict:
     return await run_in_threadpool(_add, doc)
 
 
-@router.post("/sec")
+@router.post("/sec", dependencies=_admin)
 async def add_sec_filing(req: TickerRequest) -> dict:
     """Pull a real SEC filing by ticker (e.g. AAPL) and ingest it."""
     from ..core.rag.loaders.sec_edgar import fetch_latest_filing

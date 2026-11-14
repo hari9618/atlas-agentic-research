@@ -86,10 +86,10 @@ def test_clamp_confidence(raw, expected):
 def test_render_markdown_has_sections_and_every_citation():
     s = normalize_sections(GOOD)
     md = render_markdown(s)
-    for heading in ("# Acme: Investor Brief", "## Executive Summary", "## Company Overview",
+    for heading in ("# Acme: Due-Diligence Brief", "## Executive Summary", "## Company Overview",
                     "## Financials", "## Market Position", "## Competitors",
-                    "## Recent Developments", "## Sentiment", "## Key Risks", "## Bull Case",
-                    "## Bear Case", "## Outlook", "## Bottom Line",
+                    "## Recent Developments", "## Customer Sentiment", "## Key Risks",
+                    "## Bull Case", "## Bear Case", "## Outlook", "## Bottom Line",
                     "## What We're Not Sure About"):
         assert heading in md
     assert "**Beta Corp** (threat: high)" in md
@@ -134,7 +134,7 @@ def test_synthesizer_structured_path(monkeypatch):
 
     assert calls[0]["max_tokens"] == get_settings().synth_max_tokens
     assert out["report_sections"]["stance"] == "positive"
-    assert out["report"].startswith("# Acme: Investor Brief")
+    assert out["report"].startswith("# Acme: Due-Diligence Brief")
     assert 0.0 <= out["confidence"] <= 0.85  # guardrail never raises confidence
     assert out["report_sections"]["confidence"] == out["confidence"]
     assert {c["citation"] for c in out["citations"]} == {CITE_A, CITE_B}
@@ -193,3 +193,11 @@ def test_offline_stub_is_schema_shaped():
                       "recent_developments", "sentiment", "risks", "bull_case", "bear_case",
                       "outlook", "bottom_line", "uncertainties"}
     assert CITE_A in out["report"]
+
+
+def test_placeholder_date_is_blanked_not_rendered():
+    from atlas.core.agents.report_schema import _development
+    d = _development({"date": "Not enough evidence yet.", "title": "Terms of Service published",
+                      "detail": "Liability capped at fees paid.", "sentiment": "neutral"})
+    assert d["date"] == ""
+    assert d["title"] == "Terms of Service published"

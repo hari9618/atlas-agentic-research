@@ -51,6 +51,11 @@ def build_record(values: Mapping, *, thread_id: str, scores: dict | None,
         "query": values.get("query", ""),
         "target": values.get("target", ""),
         "ticker": values.get("ticker", ""),
+        "brief": {k: values.get(k) for k in ("subject_domain", "asker", "asker_domain",
+                                             "persona", "goal", "extra_asks")
+                  if values.get(k)},
+        "degraded": bool(values.get("degraded")) or any(
+            f.get("unavailable") for f in values.get("findings") or []),
         "policy_versions": policy_versions,
         "review": {"status": status, "outcome": review_outcome(status, history),
                    "history": history},

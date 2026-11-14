@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any, TypeVar
 
 from tenacity import (
@@ -33,6 +35,7 @@ from tenacity import (
     Retrying,
     retry_if_exception,
     stop_after_attempt,
+    stop_after_delay,
     wait_exponential_jitter,
 )
 
@@ -112,6 +115,33 @@ def _log_retry(label: str) -> Callable[[RetryCallState], None]:
     return _before_sleep
 
 
+def retry_after_seconds(exc: BaseException | None) -> float | None:
+    """The server's own ``Retry-After`` (seconds form), when the error carries one.
+
+    A 429 that says "come back in 7 s" is better advice than any backoff formula:
+    retrying sooner is guaranteed to fail and burns an attempt."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    try:
+        value = float(headers.get("retry-after", ""))
+    except (TypeError, ValueError):
+        return None  # HTTP-date form: rare from APIs, fall back to backoff
+    return value if value >= 0 else None
+
+
+def _wait(base: float, cap: float) -> Callable[[RetryCallState], float]:
+    backoff = wait_exponential_jitter(initial=base, max=cap, jitter=base)
+
+    def _compute(rs: RetryCallState) -> float:
+        hinted = retry_after_seconds(rs.outcome.exception() if rs.outcome else None)
+        if hinted is not None:
+            return min(hinted, cap) if cap > 0 else 0.0
+        return backoff(rs)
+    return _compute
+
+
 def retry_call(
     fn: Callable[..., T],
     *args: Any,
@@ -119,24 +149,61 @@ def retry_call(
     label: str | None = None,
     base_wait: float | None = None,
     max_wait: float | None = None,
+    deadline_s: float | None = None,
+    on_retry: Callable[[], None] | None = None,
     **kwargs: Any,
 ) -> T:
     """Call ``fn(*args, **kwargs)``, retrying transient errors with backoff + jitter.
 
+    Waits honour ``Retry-After`` when the server sends one. ``deadline_s`` bounds the
+    whole sequence (attempts + waits) so a slow dependency can't hold a run hostage.
     Non-transient errors propagate immediately; after the last attempt the final
     transient error is re-raised (callers decide whether to degrade).
     """
     base = _env_float("ATLAS_RETRY_BASE_WAIT", 1.0) if base_wait is None else base_wait
     cap = _env_float("ATLAS_RETRY_MAX_WAIT", 20.0) if max_wait is None else max_wait
     name = label or getattr(fn, "__name__", "call")
+    stop = stop_after_attempt(max(1, attempts))
+    if deadline_s:
+        stop = stop | stop_after_delay(deadline_s)
+    log_retry = _log_retry(name)
+
+    def before_sleep(rs: RetryCallState) -> None:
+        log_retry(rs)
+        if on_retry:
+            on_retry()
+
     retryer = Retrying(
-        stop=stop_after_attempt(max(1, attempts)),
-        wait=wait_exponential_jitter(initial=base, max=cap, jitter=base),
+        stop=stop,
+        wait=_wait(base, cap),
         retry=retry_if_exception(is_transient),
-        before_sleep=_log_retry(name),
+        before_sleep=before_sleep,
         reraise=True,
     )
     return retryer(fn, *args, **kwargs)
+
+
+_llm_sem: threading.BoundedSemaphore | None = None
+_llm_sem_lock = threading.Lock()
+
+
+@contextmanager
+def llm_slot() -> Iterator[None]:
+    """Bulkhead for LLM calls: at most ``MAX_CONCURRENT_LLM_CALLS`` per process.
+
+    Four specialists per run times several concurrent runs would otherwise fire a
+    burst of parallel requests that the provider answers with 429s — and every 429
+    costs a Retry-After wait plus an attempt. Queueing here is cheaper."""
+    global _llm_sem
+    with _llm_sem_lock:
+        if _llm_sem is None:
+            from ..config import get_settings
+
+            _llm_sem = threading.BoundedSemaphore(
+                max(1, get_settings().max_concurrent_llm_calls))
+        sem = _llm_sem
+    with sem:
+        yield
 
 
 def run_or_degrade(

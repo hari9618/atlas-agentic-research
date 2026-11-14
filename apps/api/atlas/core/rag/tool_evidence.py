@@ -19,7 +19,7 @@ import logging
 from datetime import UTC, datetime
 
 from .entity import entity_terms
-from .types import Chunk, RetrievedChunk
+from .types import Chunk, RetrievedChunk, stable_ordinal
 from .web_evidence import filter_hits_for_entity, web_offline
 
 log = logging.getLogger("atlas.rag.tool_evidence")
@@ -40,16 +40,21 @@ def _now() -> str:
 
 
 def _chunk(source: str, key: str, ordinal: int, text: str, title: str, url: str = "",
-           **meta) -> RetrievedChunk:
+           *, stable: bool = False, **meta) -> RetrievedChunk:
+    """``ordinal`` is the rank (it sets the score). With ``stable`` the citation key is
+    derived from the content instead (see ``types.stable_ordinal``) — used for web-tier
+    evidence that several specialists may fetch independently."""
+    cite_no = stable_ordinal(url or key, text[:200]) if stable else ordinal
+    cid = f"tool::{source}::{stable_ordinal(key, str(cite_no), text[:200])}"
     return RetrievedChunk(
         chunk=Chunk(
-            chunk_id=f"tool::{source}::{abs(hash((key, ordinal))) % 10**12}",
+            chunk_id=cid,
             doc_id=f"{source}_{key}",
             text=text,
             source=source,
             title=title,
             url=url,
-            ordinal=ordinal,
+            ordinal=cite_no,
             metadata={"retrieved_at": _now(), **{k: v for k, v in meta.items() if v}},
         ),
         score=round(_TOOL_SCORE - ordinal * 0.02, 4),

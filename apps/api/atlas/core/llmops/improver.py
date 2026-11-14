@@ -19,9 +19,11 @@ Nothing here runs on the user's request path except the cheap ``check_regression
 from __future__ import annotations
 
 import logging
+import random
 import uuid
 from statistics import mean
 
+from ...config import get_settings
 from .diagnose import open_issues
 from .policy import COMPONENTS, LABELS, PolicyStore, get_policies
 from .proposer import propose
@@ -31,10 +33,15 @@ from .store import DocumentStore, now_iso
 
 log = logging.getLogger("atlas.llmops.improver")
 
-BENCHMARK_SIZE = 3      # questions (distinct companies) per experiment
-MIN_TRIALS = 2          # fewer paired trials than this is not evidence
+# Sizing: a specialist score moves ~0.07-0.12 when one claim flips, so with 2 trials
+# and a 0.03 bar a no-op change "won" roughly a quarter of the time. More questions, a
+# win-rate requirement and a bootstrap bound make a false release rare.
+BENCHMARK_SIZE = 6      # questions (distinct companies) per experiment
+MIN_TRIALS = 4          # fewer paired trials than this is not evidence
 MIN_GAIN = 0.03         # mean paired improvement required to release
+MIN_WIN_RATE = 0.75     # share of questions that must improve (sign-test style)
 MAX_REGRESSION = 0.10   # no single question may get worse than this
+_BOOTSTRAP = 2000       # resamples for the paired-mean lower bound
 RECENT_RECORDS = 40
 ROLLBACK_MIN_RUNS = 3   # live runs needed on each version before comparing
 ROLLBACK_DROP = 0.08    # live mean drop that triggers an automatic rollback
@@ -55,8 +62,25 @@ def reset_experiments() -> None:
     _experiments = None
 
 
-def decide(trials: list[Trial]) -> tuple[bool, float, str]:
-    """``(release?, mean delta, reason)`` under the paired decision rule."""
+def _bootstrap_lower(deltas: list[float], q: float = 0.025) -> float:
+    """The ``q`` quantile of the bootstrapped mean (seeded: decisions are reproducible)."""
+    rng = random.Random(1729)
+    n = len(deltas)
+    means = sorted(sum(rng.choice(deltas) for _ in range(n)) / n for _ in range(_BOOTSTRAP))
+    return means[int(q * _BOOTSTRAP)]
+
+
+def decide(trials: list[Trial], failed: int = 0) -> tuple[bool, float, str]:
+    """``(release?, mean delta, reason)`` under the paired decision rule.
+
+    All of: no failed trials (failures aren't random — 429s hit longer candidate
+    prompts — so dropping them biases toward the candidate), enough trials, no single
+    question worse than ``MAX_REGRESSION``, mean gain >= ``MIN_GAIN``, most questions
+    improved, and the bootstrapped 2.5th-percentile mean above zero (a one-sided 97.5%
+    bound). Simulated under realistic noise: ~4% of no-op changes pass, ~95% of real
+    +0.08 gains do (tests/test_learning_loop.py)."""
+    if failed:
+        return False, 0.0, f"{failed} replay trial(s) failed — can't conclude; retry later"
     if len(trials) < MIN_TRIALS:
         return False, 0.0, f"only {len(trials)} usable trial(s); need {MIN_TRIALS}"
     deltas = [t.delta for t in trials]
@@ -67,11 +91,19 @@ def decide(trials: list[Trial]) -> tuple[bool, float, str]:
                              f"(limit {MAX_REGRESSION:.2f})")
     if gain < MIN_GAIN:
         return False, gain, f"mean gain {gain:+.3f} is below the {MIN_GAIN:.2f} bar"
-    return True, gain, f"mean gain {gain:+.3f} across {len(trials)} questions, no regression"
+    wins = sum(d > 0.005 for d in deltas)
+    if wins < MIN_WIN_RATE * len(deltas):
+        return False, gain, f"improved only {wins} of {len(deltas)} questions"
+    lower = _bootstrap_lower(deltas)
+    if lower <= 0:
+        return False, gain, f"gain not robust (bootstrap lower bound {lower:+.3f})"
+    return True, gain, (f"mean gain {gain:+.3f}, {wins}/{len(deltas)} questions improved, "
+                        f"lower bound {lower:+.3f}, no regression")
 
 
 def improve(*, records: RunRecords | None = None, policies: PolicyStore | None = None,
-            experiments: DocumentStore | None = None, runner: PairRunner = run_pair) -> dict:
+            experiments: DocumentStore | None = None, runner: PairRunner = run_pair,
+            auto_release: bool | None = None) -> dict:
     """Run ONE experiment on the highest-weight open issue. Returns
     ``{"experiment": dict | None, "message": str}``."""
     records = records or get_records()
@@ -100,14 +132,21 @@ def improve(*, records: RunRecords | None = None, policies: PolicyStore | None =
                 "message": "Every open issue was tried recently or has no new fix to test."}
 
     comp = proposal.component
-    bench = benchmark(recent, BENCHMARK_SIZE, prefer=issue.get("records"))
+    # Holdout: validate on runs that did NOT produce the issue first — a lesson
+    # distilled from runs X must not be graded on X alone.
+    bench = benchmark(recent, BENCHMARK_SIZE, avoid=issue.get("records"))
     if len(bench) < MIN_TRIALS:
         return {"experiment": None,
                 "message": f"Need recorded runs on at least {MIN_TRIALS} different companies "
                            "to test a change fairly."}
 
-    trials = paired_trials(comp, active[comp], proposal.policy, bench, runner=runner)
-    released, gain, reason = decide(trials)
+    trials, failed = paired_trials(comp, active[comp], proposal.policy, bench, runner=runner)
+    passed, gain, reason = decide(trials, failed)
+    if auto_release is None:
+        auto_release = get_settings().llmops_auto_release
+    # A change that passed replay still goes live only after an admin reads the exact
+    # lesson text (unless auto-release is configured): lessons enter every user's prompts.
+    released = passed and auto_release
     version_before = policies.active_version(comp)
     version_after = None
     hypothesis = (f"{LABELS[comp]}: {issue['kind'].replace('_', ' ')} "
@@ -128,7 +167,12 @@ def improve(*, records: RunRecords | None = None, policies: PolicyStore | None =
                    "after": proposal.after},
         "trials": [t.to_dict() for t in trials],
         "mean_delta": gain,
-        "decision": "released" if released else "rejected",
+        "decision": ("released" if released else
+                     "awaiting_approval" if passed else "rejected"),
+        "status": ("released" if released else
+                   "awaiting_approval" if passed else "rejected"),
+        "candidate_policy": proposal.policy.to_dict() if passed and not released else None,
+        "failed_trials": failed,
         "reason": reason,
         "version_before": version_before,
         "version_after": version_after,
@@ -137,6 +181,7 @@ def improve(*, records: RunRecords | None = None, policies: PolicyStore | None =
     log.info("experiment %s on %s (%s): %s — %s", experiment["id"], comp, proposal.lever,
              experiment["decision"], reason)
     message = (f"Released {LABELS[comp]} v{version_after}: {reason}." if released
+               else f"Passed replay ({reason}); awaiting admin approval." if passed
                else f"Kept {LABELS[comp]} v{version_before}: {reason}.")
     return {"experiment": experiment, "message": message}
 
@@ -213,3 +258,37 @@ def overview(*, records: RunRecords | None = None, policies: PolicyStore | None 
               for i in open_issues(recent, active)[:8]]
     return {"components": components, "runs": records.stats(), "issues": issues,
             "experiments": experiments.list(10)}
+
+
+def approve_experiment(exp_id: str, *, approver: str, policies: PolicyStore | None = None,
+                       experiments: DocumentStore | None = None) -> dict:
+    """Release the candidate an experiment validated. Admin action, audited by caller."""
+    from .policy import Policy
+
+    policies = policies or get_policies()
+    experiments = experiments or get_experiments()
+    exp = experiments.get(exp_id)
+    if not exp or exp.get("status") != "awaiting_approval" or not exp.get("candidate_policy"):
+        raise ValueError("This experiment is not awaiting approval.")
+    comp = exp["component"]
+    if policies.active_version(comp) != exp.get("version_before"):
+        raise ValueError("The policy changed since this experiment ran; run it again.")
+    version = policies.release(comp, Policy.from_dict(exp["candidate_policy"]),
+                               notes=f"approved by {approver}: {exp['change']['summary']} "
+                                     f"({exp['mean_delta']:+.3f})")
+    exp.update(status="released", decision="released", version_after=version,
+               approved_by=approver, candidate_policy=None)
+    experiments.put(exp_id, exp)
+    return {"component": comp, "version": version}
+
+
+def reject_experiment(exp_id: str, *, approver: str,
+                      experiments: DocumentStore | None = None) -> dict:
+    experiments = experiments or get_experiments()
+    exp = experiments.get(exp_id)
+    if not exp or exp.get("status") != "awaiting_approval":
+        raise ValueError("This experiment is not awaiting approval.")
+    exp.update(status="rejected", decision="rejected", rejected_by=approver,
+               candidate_policy=None, reason=f"{exp.get('reason', '')} - rejected by admin")
+    experiments.put(exp_id, exp)
+    return {"status": "rejected"}

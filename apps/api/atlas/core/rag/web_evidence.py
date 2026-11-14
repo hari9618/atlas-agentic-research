@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 
 from .entity import EntityTerms, entity_terms, mentions_entity
 from .reranker import rerank_chunks
-from .types import Chunk, RetrievedChunk
+from .types import Chunk, RetrievedChunk, stable_ordinal
 
 log = logging.getLogger("atlas.rag.web_evidence")
 
@@ -50,7 +50,8 @@ def filter_hits_for_entity(hits: list[dict], entity: EntityTerms | None,
     if entity is None:
         return hits
     kept = [h for h in hits
-            if mentions_entity(f"{h.get('title', '')}\n{h.get('content', '')}", entity)]
+            if mentions_entity(f"{h.get('title', '')}\n{h.get('content', '')}", entity,
+                               url=h.get("url", ""))]
     if len(kept) < len(hits):
         log.info("entity guard (%s): dropped %d of %d hits not about %r", label,
                  len(hits) - len(kept), len(hits), entity.name or entity.ticker)
@@ -90,13 +91,13 @@ def web_evidence(query: str, *, max_results: int = 4,
             RetrievedChunk(
                 chunk=Chunk(
                     # Stable id: the same result for the same query won't duplicate.
-                    chunk_id=f"web::{abs(hash((url, i))) % 10**12}",
+                    chunk_id=f"web::{stable_ordinal(url, text[:200])}",
                     doc_id=f"web_{i}",
                     text=text,
                     source="web_search",
                     title=title,
                     url=url,
-                    ordinal=i,
+                    ordinal=stable_ordinal(url, text[:200]),
                     metadata={"retrieved_at": retrieved_at},
                 ),
                 # Provisional score by rank; the re-rank below replaces it with a
@@ -113,9 +114,9 @@ def web_evidence(query: str, *, max_results: int = 4,
     return chunks
 
 
-def web_evidence_about(target: str, ticker: str = ""):
+def web_evidence_about(target: str, ticker: str = "", domain: str = ""):
     """A CRAG ``web_fallback`` scoped to one company: off-entity hits are dropped."""
-    entity = entity_terms(target, ticker)
+    entity = entity_terms(target, ticker, domain)
 
     def _fallback(query: str) -> list[RetrievedChunk]:
         return web_evidence(query, entity=entity)

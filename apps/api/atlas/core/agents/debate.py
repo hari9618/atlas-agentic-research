@@ -9,6 +9,7 @@ the report can still be written from the findings (design §5).
 from __future__ import annotations
 
 import logging
+import re
 
 from ..resilience import run_or_degrade
 from ..state import ResearchState
@@ -44,10 +45,14 @@ def debate_node(state: ResearchState) -> dict:
 
 
 def _debate(state: ResearchState) -> dict:
-    query = state["query"]
+    from .brief import describe
+
+    query = f"{state['query']}\n\n{describe(state)}"
     brief = _findings_brief(state)
     bull = chat(
         f"You are the BULL. Argue the optimistic case on:\n{query}\n\nFindings:\n{brief}\n\n"
+        "Argue from the reader's side (for a competitor check, 'optimistic' means the "
+        "subject is a strong company the reader must take seriously). "
         "Give 3 crisp points grounded in the findings.",
         system="You argue the bullish/positive case, but only from the evidence.",
         temperature=0.6, run_name="debate.bull",
@@ -66,11 +71,10 @@ def _debate(state: ResearchState) -> dict:
         system="You are impartial and decide based on argument strength.",
         temperature=0.1, run_name="debate.judge",
     )
-    leaning = "neutral"
-    for tag in ("BULLISH", "BEARISH", "NEUTRAL"):
-        if tag in judge.upper():
-            leaning = tag.lower()
-            break
+    # The verdict word is asked for on the LAST line; a first-match scan read
+    # "...the bullish case is weaker... BEARISH" as bullish.
+    tags = re.findall(r"\b(BULLISH|BEARISH|NEUTRAL)\b", judge.upper())
+    leaning = tags[-1].lower() if tags else "neutral"
     return {"debate": [
         {"role": "bull", "text": bull},
         {"role": "bear", "text": bear},

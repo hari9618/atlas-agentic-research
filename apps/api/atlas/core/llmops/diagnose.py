@@ -31,6 +31,9 @@ SECTION_COMPONENT = {
     "recent_developments": "news_sentiment", "sentiment": "news_sentiment",
     "risks": "risk",
     "market_position": "market", "competitors": "market",
+    "snapshot": "fundamentals", "pricing": "fundamentals",
+    "strengths": "market", "head_to_head": "market",
+    "weaknesses": "risk",
 }
 
 _FEEDBACK_KEYWORDS = {
@@ -70,12 +73,31 @@ def _agent_unavailable(findings: list[dict], agent: str) -> bool:
     return bool(mine) and all(f.get("unavailable") for f in mine)
 
 
+def _trusted_reviewer(record: dict) -> bool:
+    """Feedback teaches every user's agents, so only signed-up accounts count: demo
+    (guest) sessions are anonymous and free to mint. Unscoped runs (CLI, tests, admin
+    tooling) are trusted."""
+    thread = str(record.get("thread_id") or "")
+    if ":" not in thread:
+        return True
+    try:
+        from ...security.store import get_auth_store
+
+        user = get_auth_store().user_by_id(thread.split(":", 1)[0])
+    except Exception:
+        return False
+    return user is not None and user.role in ("user", "admin") and not user.disabled
+
+
 def diagnose_record(record: dict) -> list[Issue]:
     rid = record.get("thread_id", "")
     issues: list[Issue] = []
+    if record.get("degraded"):
+        return issues  # an outage run says nothing about prompt quality
 
     # 1. Human review: every revise / reject with feedback is a labelled failure.
-    for h in record.get("review", {}).get("history", []):
+    history = record.get("review", {}).get("history", [])
+    for h in history if _trusted_reviewer(record) else []:
         action = h.get("action")
         feedback = (h.get("feedback") or "").strip()
         if action in ("revise", "reject") and feedback:

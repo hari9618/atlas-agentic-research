@@ -22,14 +22,16 @@ from .types import RetrievedChunk
 log = logging.getLogger("atlas.rag.reranker")
 
 _encoder = None
+_encoder_lock = __import__("threading").Lock()
 
 
 def _get_encoder():
     global _encoder
-    if _encoder is None:
-        from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+    with _encoder_lock:  # four specialists retrieve at once: load the model once
+        if _encoder is None:
+            from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
-        _encoder = HuggingFaceCrossEncoder(model_name=get_settings().rerank_model)
+            _encoder = HuggingFaceCrossEncoder(model_name=get_settings().rerank_model)
     return _encoder
 
 

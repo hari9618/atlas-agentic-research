@@ -1,0 +1,60 @@
+name: Atlas agent eval
+
+# Live, end-to-end agentic evaluation (apps/api/evals/agentic): the real agents run
+# persona scenarios against the real web and LLM, then DeepEval judges the reports
+# (answers the reader's question, surfaces negatives, persona fit, faithfulness) on
+# top of deterministic checks (right company, right reader, citations resolve).
+#
+# It spends LLM tokens and search credits, so it is NOT on every push: run it by hand
+# before a release, and weekly to catch drift in providers/models.
+# Needs repository secrets GROQ_API_KEY and TAVILY_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "pytest -k expression (blank = all scenarios)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+
+concurrency:
+  group: agent-eval
+  cancel-in-progress: false
+
+jobs:
+  agent-eval:
+    name: Persona scenarios (live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      ATLAS_OFFLINE_EMBED: "1"
+      DATABASE_URL: ""
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install
+        run: pip install -e ".[dev,agent-eval]"
+      - name: Run scenarios
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then echo "::warning::GROQ_API_KEY secret not set - skipping"; exit 0; fi
+          K="${{ github.event.inputs.scenarios }}"
+          python -m pytest evals/agentic -q -p no:warnings ${K:+-k "$K"}
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-results
+          path: apps/api/evals/agentic/results/latest.json
+          if-no-files-found: ignore

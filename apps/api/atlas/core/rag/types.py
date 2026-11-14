@@ -55,6 +55,23 @@ class Chunk:
         return f"{base} {marker}" if marker else base
 
 
+def stable_ordinal(*parts: str) -> int:
+    """A process-independent number for a piece of evidence (url + text).
+
+    Citation keys are ``source#ordinal``. Numbering hits 0..n per search made every
+    specialist's first web hit ``web_search#0`` — four different pages behind one key,
+    so verification and the reader's chips resolved the wrong source. Hashing the
+    content gives the same key to the same evidence everywhere (and dedups it), and
+    different keys to different evidence. ``hashlib``, not ``hash()``: the latter is
+    randomized per process, so ids changed between replicas and restarts.
+    """
+    import hashlib
+
+    digest = hashlib.blake2b("\x1f".join(parts).encode("utf-8", "ignore"), digest_size=8)
+    # 10^7 keys: ~50 evidence items per run collide with probability ~0.01%.
+    return int.from_bytes(digest.digest(), "big") % 10_000_000
+
+
 @dataclass
 class RetrievedChunk:
     """A chunk plus the scores that surfaced it. Provenance rides along in `chunk`."""

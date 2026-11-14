@@ -225,7 +225,11 @@ def test_finished_runs_are_recorded_for_the_learning_loop(llm_configured):
     _events(_get("/research/resume", thread_id=tid, action="revise", feedback="More on debt",
                  section="risks"))
     _events(_get("/research/resume", thread_id=tid, action="approve"))
-    record = next(r for r in get_records().recent(50) if r["thread_id"] == tid)
+    from atlas.core.graph import drain_recorder
+
+    drain_recorder()  # runs are recorded off the stream, in the background
+    # Records keep the internal, user-scoped run id (see routers/research.scoped_thread).
+    record = next(r for r in get_records().recent(50) if r["thread_id"] == f"test-user:{tid}")
     assert record["review"]["outcome"] == "revised"
     assert record["review"]["history"][0]["section"] == "risks"
     assert set(record["policy_versions"]) == {"fundamentals", "news_sentiment", "risk",

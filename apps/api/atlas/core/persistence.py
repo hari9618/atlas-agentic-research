@@ -74,6 +74,34 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "postgres", "host.docker.internal")
+
+
+def enforce_tls(url: str, *, production: bool) -> str:
+    """In production, never talk to Postgres in cleartext.
+
+    Credentials and every row (queries, reports, feedback) cross the network on this
+    connection. A URL without ``sslmode`` makes libpq *prefer* TLS but silently accept
+    a plaintext downgrade, so ``sslmode=require`` is added; an explicit
+    ``sslmode=disable``/``allow`` to a remote host is refused. Local/compose hosts are
+    exempt (the traffic never leaves the machine or the Docker network).
+    """
+    if not production or "://" not in url:
+        return url
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    if (parts.hostname or "") in _LOCAL_HOSTS:
+        return url
+    query = dict(parse_qsl(parts.query))
+    mode = query.get("sslmode", "").lower()
+    if mode in {"disable", "allow"}:
+        raise ValueError(f"DATABASE_URL has sslmode={mode}; production requires TLS")
+    if mode in {"", "prefer"}:
+        query["sslmode"] = "require"
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
 def redact_database_url(url: str) -> str:
     """Hide the password so the URL is safe to log."""
     return re.sub(r"(://[^:/@]+):[^@]*@", r"\1:***@", url or "")
@@ -92,7 +120,7 @@ def open_pg_pool(url: str, *, max_size: int = _POOL_MAX_SIZE) -> ConnectionPool:
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
 
-    conninfo = normalize_database_url(url)
+    conninfo = enforce_tls(normalize_database_url(url), production=get_settings().is_production)
     # Probe with one plain connection first: a refused/misspelled host fails in
     # milliseconds with libpq's real error, whereas the pool would keep retrying in the
     # background until its timeout and then raise a vague PoolTimeout.
@@ -180,9 +208,10 @@ def using_postgres() -> bool:
 # ---------------------------------------------------------------- checkpointer
 def postgres_saver(pool: ConnectionPool):
     """Build a ``PostgresSaver`` on ``pool`` and run its (idempotent) migrations."""
-    from langgraph.checkpoint.postgres import PostgresSaver
+    from .checkpoint_crypto import encrypted_postgres_saver_cls, encrypted_serde
 
-    saver = PostgresSaver(pool)
+    # Encrypted at rest: see core/checkpoint_crypto.py for what is sealed and why.
+    saver = encrypted_postgres_saver_cls()(pool, serde=encrypted_serde())
     with schema_lock(pool):
         saver.setup()
     return saver
@@ -191,12 +220,12 @@ def postgres_saver(pool: ConnectionPool):
 def _sqlite_saver():
     db = cache_dir() / "atlas_checkpoints.sqlite"
     db.parent.mkdir(parents=True, exist_ok=True)
-    from langgraph.checkpoint.sqlite import SqliteSaver
+    from .checkpoint_crypto import encrypted_serde, encrypted_sqlite_saver_cls
 
     # check_same_thread=False: the compiled graph is used from worker threads;
     # SqliteSaver serializes access with its own lock.
     conn = sqlite3.connect(str(db), check_same_thread=False)
-    saver = SqliteSaver(conn)
+    saver = encrypted_sqlite_saver_cls()(conn, serde=encrypted_serde())
     try:
         saver.setup()  # create checkpoint tables if missing
     except Exception as exc:  # pragma: no cover

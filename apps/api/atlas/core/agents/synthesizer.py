@@ -27,6 +27,7 @@ from ..guardrails import apply_grounding_guardrail
 from ..llmops.policy import Policy, get_policies, prompt_block
 from ..state import ResearchState
 from .base import chat, extract_json, llm_ready, salvage_json_object
+from .brief import describe
 from .report_render import render_markdown
 from .report_schema import NOT_ENOUGH, normalize_brackets, normalize_sections
 
@@ -37,8 +38,17 @@ _SCHEMA = """{
   "headline": "one sentence that answers the user's question",
   "stance": "positive | neutral | cautious",
   "confidence": 0.0,
+  "verdict": {"answer": "2-3 sentences answering THE QUESTION for THIS reader, cited",
+              "recommendation": "a short call, e.g. 'Real threat - act now', 'Low threat -
+                                 monitor', 'Pass for now', 'Good fit, check support'"},
   "bottom_line": "2-3 sentences a reader can act on",
   "executive_summary": ["3-5 bullets: the findings that matter most, each cited"],
+  "snapshot": [{"label": "Founded | HQ | Team size | Funding | Starting price | Customers",
+                "value": "...", "citation": "[label]"}],
+  "strengths": ["what they genuinely do well, cited"],
+  "weaknesses": ["negatives: complaints, gaps, red flags, cited"],
+  "pricing": {"summary": "how they charge, in plain words",
+              "plans": [{"name": "...", "price": "...", "notes": "...", "citation": "[label]"}]},
   "company_overview": {"what_they_do": "...", "business_model": "how they make money",
                        "products": ["main products / services"], "customers": "who buys and why"},
   "financials": {"summary": "growth and financial health in plain words",
@@ -50,18 +60,51 @@ _SCHEMA = """{
   "recent_developments": [{"date": "...", "title": "short headline",
                            "detail": "what happened and why it matters",
                            "sentiment": "positive | neutral | negative", "citation": "[label]"}],
-  "sentiment": {"overall": "positive | mixed | negative", "summary": "the overall mood"},
+  "sentiment": {"overall": "positive | mixed | negative", "summary": "what customers say",
+                "praise": ["recurring praise, cited"],
+                "complaints": ["recurring complaints, cited"]},
   "risks": [{"title": "...", "severity": "high | medium | low", "detail": "...",
              "citation": "[label]"}],
   "bull_case": ["optimistic points, cited"],
   "bear_case": ["cautious points, cited"],
-  "outlook": {"summary": "what to expect", "watch_items": ["what an investor should monitor"]},
+  "outlook": {"summary": "what to expect", "watch_items": ["what this reader should monitor"]},
+  "head_to_head": {"asker": "the asker's company, or \"\"", "overlap": "high | medium | low | none",
+                   "summary": "do they really compete, and where",
+                   "rows": [{"dimension": "Target customer | Core problem | Pricing | ...",
+                             "subject": "...", "asker": "...", "edge": "subject | asker | even",
+                             "citation": "[label]"}]},
+  "custom_answers": [{"question": "each specific ask, verbatim", "answer": "...",
+                      "citation": "[label]"}],
   "uncertainties": ["what we are NOT sure about"]
 }"""
 
+# What each reader needs first. The schema is the same for everyone; the emphasis,
+# the verdict and the recommendation change.
+_PERSONA_GUIDE = {
+    "investor": "The reader is deciding whether to INVEST. Lead with traction (customers, "
+                "growth, funding), the business model and pricing power, then the risks "
+                "that could kill the investment. The recommendation is invest / watch / pass.",
+    "competitor": "The reader runs a competing business and asks whether this company is a "
+                  "THREAT. Lead with where they overlap (same customers? same problem?), "
+                  "their strengths the reader should copy or counter, and their weaknesses "
+                  "the reader can exploit. Fill head_to_head when the asker's company is "
+                  "known; if they serve different customers or problems, say so plainly - "
+                  "'not a direct competitor' is a valid, valuable answer.",
+    "buyer": "The reader is deciding whether to BUY FROM or RELY ON this company. Lead with "
+             "fit, pricing, reliability, support quality and what customers complain about, "
+             "and any security or vendor-viability risk. The recommendation is buy / trial "
+             "first / avoid.",
+    "partner": "The reader is considering a PARTNERSHIP. Lead with their customers, "
+               "reputation, stability and how the two businesses fit.",
+    "job_seeker": "The reader is considering WORKING THERE. Lead with stability, funding, "
+                  "growth signals and what employees say.",
+    "general": "The reader wants a clear picture: what they do, how they are doing, what "
+               "customers think, and the main risks.",
+}
+
 _RULES = (
     "Rules:\n"
-    "- Write in plain English for a busy, non-technical investor. No jargon, no tables.\n"
+    "- Write in plain English for a busy, non-technical reader. No jargon.\n"
     "- Be brief — a brief that gets read beats a long one: every text field at most 2 "
     "short sentences; every list at most 4 items (risks and recent_developments at most "
     "5, financial metrics at most 6); every bullet under 25 words. Pick what matters most "
@@ -74,6 +117,13 @@ _RULES = (
     "- Enum fields use exactly the listed lowercase values.\n"
     "- confidence is 0..1: how well the evidence answers the question.\n"
     "- uncertainties lists what the evidence does NOT establish.\n"
+    "- weaknesses and risks are as important as strengths: a small company's own site "
+    "only shows its best side, so look hard for complaints and gaps in the findings.\n"
+    "- Never guess revenue, headcount or prices; a missing figure goes in uncertainties.\n"
+    "- custom_answers: one item per specific ask in the brief ([] if none); if the "
+    "evidence can't answer it, say so in the answer.\n"
+    "- head_to_head: only when the asker's own company is known; otherwise "
+    "{\"asker\": \"\", \"rows\": []}.\n"
     "- Return ONLY the JSON object — no prose, no markdown fences."
 )
 
@@ -132,9 +182,11 @@ def _entity_line(state: ResearchState) -> str:
 def _structured_prompt(state: ResearchState) -> str:
     target = state.get("target") or "the company"
     findings = _findings_block(state.get("findings", []))
+    persona = state.get("persona") or "general"
     return (
-        f"Write an investor-grade due-diligence brief on {target}, answering:\n"
-        f"\"{state['query']}\"\n\n"
+        f"Write a due-diligence brief on {target}, answering:\n"
+        f"\"{state['query']}\"\n\n{describe(state)}\n"
+        f"{_PERSONA_GUIDE.get(persona, _PERSONA_GUIDE['general'])}\n\n"
         f"FINDINGS (each ends with its citation label):\n{findings}"
         f"\n\nBULL vs BEAR DEBATE:\n{_debate_block(state.get('debate', []))}"
         f"{_revision_block(state)}\n\n"
@@ -319,8 +371,30 @@ def synthesize_with(state: ResearchState, policy: Policy) -> dict:
     }
 
 
+_BRIEF_KEYS = ("persona", "asker", "asker_domain", "subject_domain", "goal", "extra_asks")
+
+
+def _with_brief(out: dict, state: ResearchState) -> dict:
+    """Attach the research brief to the report and surface planning caveats."""
+    notes = list(state.get("brief_notes") or [])
+    if "supervisor" in (state.get("degraded") or []):
+        notes.append("The question could not be fully analysed by the planner this run; "
+                     "the subject and reader type were inferred from the wording.")
+    sections = out.get("report_sections")
+    if isinstance(sections, dict):
+        sections = {**sections, "brief": {k: state.get(k) or ([] if k == "extra_asks" else "")
+                                          for k in _BRIEF_KEYS}}
+        if notes:
+            sections["uncertainties"] = [*notes, *(sections.get("uncertainties") or [])]
+        out = {**out, "report_sections": sections,
+               "uncertainties": sections.get("uncertainties", out.get("uncertainties"))}
+    elif notes:
+        out = {**out, "uncertainties": [*notes, *(out.get("uncertainties") or [])]}
+    return out
+
+
 def synthesize_node(state: ResearchState) -> dict:
-    return synthesize_with(state, get_policies().active("synthesizer"))
+    return _with_brief(synthesize_with(state, get_policies().active("synthesizer")), state)
 
 
 def with_uncertainty(state: ResearchState, note: str) -> dict:

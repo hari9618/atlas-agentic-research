@@ -73,7 +73,10 @@ def report_statements(report: str) -> list[dict]:
             continue
         if any(s in section for s in _SKIP_SECTIONS):
             continue
-        line = _clean(line)
+        # Drop the trust markers first: web citations render as
+        # "[Title (src#n) [web]]", and the nested bracket made _CITE miss every web
+        # citation — those statements counted as uncited (citation accuracy 0.0).
+        line = _MARKER.sub("", _clean(line))
         keys = [k for group in _CITE.findall(line) for k in _KEY.findall(group)]
         text = _MARKER.sub("", _CITE.sub("", line)).strip(" .;")
         if any(s in text.lower() for s in _SKIP_LINES) or len(text.split()) < _MIN_WORDS:

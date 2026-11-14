@@ -16,8 +16,11 @@ from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 
 from ..config import get_settings
+from ..core.coordination import get_coordinator
 from ..core.persistence import using_postgres
 from ..observability import get_langfuse_handler
+from ..security.crypto import keyring
+from ..security.limits import RUN_SLOTS
 
 router = APIRouter(tags=["health"])
 
@@ -68,6 +71,15 @@ async def readiness() -> dict:
             "backend": "postgres" if await run_in_threadpool(using_postgres) else "sqlite",
         },
         "web_search": {"configured": bool(settings.tavily_api_key.strip())},
+        "coordination": {
+            # Where rate limits/leases live: redis/postgres are shared by every
+            # instance; memory means limits are per instance (single-node only).
+            "backend": (await run_in_threadpool(get_coordinator)).name,
+        },
+        # "env" = key from the secret store (production); "dev-file" = local dev key.
+        "encryption": {"keyring": keyring().source, "active_key_id": keyring().active.kid},
+        "capacity": {"active_runs": RUN_SLOTS.active,
+                     "max_concurrent_runs": settings.max_concurrent_runs},
     }
 
     ready = settings.llm_configured  # LLM is the only hard requirement
@@ -84,3 +96,15 @@ async def web_search_probe() -> dict:
     from ..core.tools.web_search import probe
 
     return await run_in_threadpool(probe)
+
+
+@router.get("/health/upstreams")
+async def upstream_health() -> dict:
+    """Circuit-breaker state and call counters for every external provider.
+
+    ``open`` means this instance is failing fast for that provider until its cooldown
+    ends; ``retries``/``cache_hits``/``coalesced`` show how much load the
+    resilience layers absorbed."""
+    from ..core.upstreams import stats
+
+    return {"upstreams": stats()}

@@ -67,7 +67,8 @@ def parse_findings(agent: str, raw: str, chunks: list[RetrievedChunk]) -> list[d
         claim = str(it.get("claim", "")).strip()
         if not claim:
             continue
-        idx = _as_index(it.get("citation_index", 1))
+        # No index means no citation — never silently attach the first chunk.
+        idx = _as_index(it.get("citation_index"))
         cite, ev_text, ev_id = "n/a", "", ""
         if idx is not None and 1 <= idx <= len(chunks):
             ch = chunks[idx - 1].chunk

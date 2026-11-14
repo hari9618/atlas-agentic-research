@@ -128,10 +128,12 @@ class HybridIndex:
         if rerank and os.getenv("ATLAS_OFFLINE_EMBED") != "1":
             try:
                 from langchain.retrievers.document_compressors import CrossEncoderReranker
-                from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
-                model = HuggingFaceCrossEncoder(model_name=get_settings().rerank_model)
-                compressor = CrossEncoderReranker(model=model, top_n=top_k)
+                from .reranker import _get_encoder
+
+                # Shared, cached cross-encoder (~1 GB): building one per retrieve()
+                # reloaded the model up to 8 times per run.
+                compressor = CrossEncoderReranker(model=_get_encoder(), top_n=top_k)
                 return ContextualCompressionRetriever(
                     base_compressor=compressor, base_retriever=ensemble
                 )

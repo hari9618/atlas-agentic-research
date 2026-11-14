@@ -38,7 +38,12 @@ class TrustTier(str, Enum):
 # Sources that are Atlas's own output or external/unvetted. Everything else is an
 # ingested primary source and defaults to AUTHORITATIVE.
 _DERIVED_SOURCES = {"atlas_derived", "memory"}
-_WEB_SOURCES = {"web_search", "web", "company_news", "stock_data"}
+_WEB_SOURCES = {"web_search", "web", "company_news", "stock_data",
+                # Private-company research (rag/company_evidence.py). A company's own
+                # site is first-hand but self-promotional; reviews, LinkedIn snippets
+                # and funding pages are third-party but unvetted — all web-tier.
+                "company_website", "website_audit", "reviews", "employee_reviews",
+                "linkedin", "funding", "alternatives", "asker_website"}
 
 # Visible markers appended to a citation so a reader (and the guardrail) can tell a
 # derived or web citation from an authoritative one at a glance.
@@ -54,13 +59,20 @@ _TRUST_WEIGHT = {
 }
 
 
+# Only these are primary sources. Anything else — including a new tool someone adds
+# later — is web-tier until deliberately allowlisted here: trust must be opted into.
+# (curated corpus front-matter sources + admin uploads)
+_AUTHORITATIVE_SOURCES = {"sec_edgar", "upload", "research", "news", "filing",
+                          "annual_report"}
+
+
 def trust_for_source(source: str | None) -> TrustTier:
     s = (source or "").lower()
     if s in _DERIVED_SOURCES:
         return TrustTier.DERIVED
     if s in _WEB_SOURCES:
         return TrustTier.WEB
-    return TrustTier.AUTHORITATIVE
+    return TrustTier.AUTHORITATIVE if s in _AUTHORITATIVE_SOURCES else TrustTier.WEB
 
 
 def trust_weight(source: str | None) -> float:

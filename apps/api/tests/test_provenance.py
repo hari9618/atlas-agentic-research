@@ -29,8 +29,11 @@ def test_sources_map_to_the_right_trust_tier():
     assert trust_for_source("web_search") is TrustTier.WEB
     assert trust_for_source("atlas_derived") is TrustTier.DERIVED
     assert trust_for_source("memory") is TrustTier.DERIVED
-    # Unknown ingested source defaults to authoritative, not derived.
-    assert trust_for_source("some_new_loader") is TrustTier.AUTHORITATIVE
+    # Unknown sources are web-tier until deliberately allowlisted: trust is opted
+    # into (a new tool must never ship as "authoritative" by accident).
+    assert trust_for_source("some_new_loader") is TrustTier.WEB
+    assert trust_for_source("company_website") is TrustTier.WEB
+    assert trust_for_source("reviews") is TrustTier.WEB
 
 
 def test_authoritative_outranks_derived_in_weight():

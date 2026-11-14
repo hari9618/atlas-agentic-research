@@ -114,9 +114,15 @@ def test_guess_target_extracts_the_company():
     assert specialists.guess_target("is this any good") == "is this any good"
 
 
+def _core(out: dict) -> dict:
+    return {k: out[k] for k in ("target", "ticker", "plan")}
+
+
 def test_plan_offline_fallback():
     out = specialists.plan_node({"query": "Should I invest in Helios Robotics?"})
-    assert out == {"target": "Helios Robotics", "ticker": "", "plan": specialists.DEFAULT_PLAN}
+    assert _core(out) == {"target": "Helios Robotics", "ticker": "",
+                          "plan": specialists.DEFAULT_PLAN}
+    assert out["persona"] == "investor" and "invest" in out["goal"].lower()
 
 
 def test_plan_parses_target_ticker_and_focus(monkeypatch):
@@ -124,7 +130,8 @@ def test_plan_parses_target_ticker_and_focus(monkeypatch):
     monkeypatch.setattr(specialists, "chat", lambda *a, **k: json.dumps(
         {"target": "Apple Inc.", "ticker": "aapl", "focus_areas": ["iPhone demand", "Services"]}))
     out = specialists.plan_node({"query": "Should I buy Apple?"})
-    assert out == {"target": "Apple Inc.", "ticker": "AAPL", "plan": ["iPhone demand", "Services"]}
+    assert _core(out) == {"target": "Apple Inc.", "ticker": "AAPL",
+                          "plan": ["iPhone demand", "Services"]}
 
     monkeypatch.setattr(specialists, "chat", lambda *a, **k: json.dumps(
         {"target": "Helios Robotics", "ticker": "not public", "focus_areas": []}))
@@ -165,7 +172,8 @@ def test_specialist_cites_merged_tool_evidence_by_index(monkeypatch):
     monkeypatch.setattr(specialists, "chat", fake_chat)
     out = specialists.fundamentals_node({"query": "Acme?", "target": "Acme", "ticker": "ACME"})
     f0, f1 = out["findings"]
-    assert "[1] (Acme 10-K (sec_edgar#0))" in seen["prompt"]  # tool evidence listed first
+    # tool evidence listed first, fenced as untrusted data
+    assert '<evidence index="1" source="Acme 10-K (sec_edgar#0)">' in seen["prompt"]
     assert f0["citation"] == "Acme 10-K (sec_edgar#0)" and f0["evidence_id"] == "tool::sec::1"
     assert f1["citation"] == "n/a"  # an invented index never becomes a citation
 

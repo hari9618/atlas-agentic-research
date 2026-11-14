@@ -28,7 +28,7 @@ from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -91,15 +91,18 @@ class _SqliteBackend:
             if "embedding" not in cols:
                 c.execute("ALTER TABLE episodes ADD COLUMN embedding BLOB")
                 log.info("Migrated episodes table: added embedding column")
+            if "owner" not in cols:  # tenant scoping (see EpisodicMemory.for_subject)
+                c.execute("ALTER TABLE episodes ADD COLUMN owner TEXT")
 
     def insert(self, query: str, target: str, report: str, confidence: float | None,
-               findings: list[dict], created_at: datetime, blob: bytes | None) -> int:
+               findings: list[dict], created_at: datetime, blob: bytes | None,
+               owner: str = "") -> int:
         with closing(self._conn()) as c, c:
             cur = c.execute(
                 "INSERT INTO episodes (query, target, report, confidence, findings, created_at, "
-                "embedding) VALUES (?,?,?,?,?,?,?)",
+                "embedding, owner) VALUES (?,?,?,?,?,?,?,?)",
                 (query, target, report, confidence, json.dumps(findings),
-                 created_at.isoformat(), blob),
+                 created_at.isoformat(), blob, owner),
             )
             return int(cur.lastrowid)
 
@@ -108,6 +111,12 @@ class _SqliteBackend:
             return c.execute(
                 f"SELECT {_COLS} FROM episodes ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
+
+    def by_owner(self, owner: str, limit: int) -> list[tuple]:
+        with closing(self._conn()) as c, c:
+            return c.execute(
+                f"SELECT {_COLS} FROM episodes WHERE owner = ? ORDER BY created_at DESC "
+                "LIMIT ?", (owner, limit)).fetchall()
 
     def rows(self, with_embedding: bool = False) -> list[tuple]:
         cols = _COLS + (",embedding" if with_embedding else "")
@@ -144,25 +153,63 @@ class _PostgresBackend:
         )""",
         "CREATE INDEX IF NOT EXISTS atlas_episodes_created_at_idx "
         "ON atlas_episodes (created_at DESC)",
+        "ALTER TABLE atlas_episodes ADD COLUMN IF NOT EXISTS owner TEXT",
+        "CREATE INDEX IF NOT EXISTS atlas_episodes_owner_idx "
+        "ON atlas_episodes (owner, created_at DESC)",
     )
 
     def __init__(self, pool: Any) -> None:
         self.pool = pool
         run_ddl(pool, self._DDL)
 
+    # Text columns are encrypted at rest (security/crypto.py); the column is the
+    # GCM context. ``findings`` is JSONB, so its ciphertext sits in {"_enc": ...}.
+    # Embeddings stay in clear: similarity search needs them, and they are vectors,
+    # not text — a documented trade-off (docs/security.md).
+    _CTX: ClassVar[dict[int, str]] = {1: "atlas_episodes.query", 2: "atlas_episodes.target",
+            3: "atlas_episodes.report"}
+
+    def _open_row(self, row: tuple) -> tuple:
+        from ...security.crypto import keyring
+
+        ring = keyring()
+        out = list(row)
+        for i, ctx in self._CTX.items():
+            out[i] = ring.decrypt(out[i], ctx)
+        if isinstance(out[5], dict) and "_enc" in out[5]:
+            out[5] = json.loads(ring.decrypt(out[5]["_enc"], "atlas_episodes.findings"))
+        return tuple(out)
+
     def _fetch(self, sql: str, params: tuple = ()) -> list[tuple]:
         with self.pool.connection() as conn:
-            return [tuple(r.values()) for r in conn.execute(sql, params).fetchall()]
+            raw = [tuple(r.values()) for r in conn.execute(sql, params).fetchall()]
+        out = []
+        for row in raw:
+            # One row under an unknown/retired key must not take recall (and so every
+            # run) down: skip it loudly. Rotation tooling reports such rows too.
+            try:
+                out.append(self._open_row(row))
+            except Exception as exc:
+                log.error("episode %s unreadable, skipped (%s)", row[0], exc)
+        return out
 
     def insert(self, query: str, target: str, report: str, confidence: float | None,
-               findings: list[dict], created_at: datetime, blob: bytes | None) -> int:
+               findings: list[dict], created_at: datetime, blob: bytes | None,
+               owner: str = "") -> int:
         from psycopg.types.json import Jsonb
 
+        from ...security.crypto import keyring
+
+        ring = keyring()
+        sealed_findings = {"_enc": ring.encrypt(json.dumps(findings, default=str),
+                                                "atlas_episodes.findings")}
         with self.pool.connection() as conn:
             row = conn.execute(
                 "INSERT INTO atlas_episodes (query, target, report, confidence, findings, "
-                "created_at, embedding) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-                (query, target, report, confidence, Jsonb(findings), created_at, blob),
+                "created_at, embedding, owner) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (ring.encrypt(query, self._CTX[1]), ring.encrypt(target, self._CTX[2]),
+                 ring.encrypt(report, self._CTX[3]), confidence, Jsonb(sealed_findings),
+                 created_at, blob, owner),
             ).fetchone()
         return int(row["id"])
 
@@ -171,6 +218,11 @@ class _PostgresBackend:
             f"SELECT {_COLS} FROM atlas_episodes ORDER BY created_at DESC, id DESC LIMIT %s",
             (limit,),
         )
+
+    def by_owner(self, owner: str, limit: int) -> list[tuple]:
+        return self._fetch(
+            f"SELECT {_COLS} FROM atlas_episodes WHERE owner = %s "
+            "ORDER BY created_at DESC, id DESC LIMIT %s", (owner, limit))
 
     def rows(self, with_embedding: bool = False) -> list[tuple]:
         cols = _COLS + (",embedding" if with_embedding else "")
@@ -227,7 +279,7 @@ class EpisodicMemory:
 
     # ---- write ----
     def save(self, query: str, report: str, confidence: float | None,
-             findings: list[dict], target: str = "") -> int:
+             findings: list[dict], target: str = "", owner: str = "") -> int:
         created_at = datetime.now(UTC)
         # Embed once, here — recall then reads the vector instead of recomputing it.
         try:
@@ -235,13 +287,29 @@ class EpisodicMemory:
         except Exception as exc:  # pragma: no cover - embedder unavailable
             log.warning("Could not embed episode at save time (%s) — will embed on recall", exc)
             blob = None
-        eid = self._store.insert(query, target, report, confidence, findings, created_at, blob)
+        eid = self._store.insert(query, target, report, confidence, findings, created_at, blob,
+                                 owner)
         log.info("Saved episode #%s for query %r", eid, query[:60])
         return eid
 
     # ---- read: recency (SQL) ----
     def recent(self, limit: int = 3) -> list[Episode]:
         return [self._row(r) for r in self._store.recent(limit)]
+
+    def for_subject(self, owner: str, subject: str, limit: int = 2) -> list[Episode]:
+        """This user's earlier runs on this same company — the only memory a run gets.
+
+        Scoped by owner (one tenant never sees another's questions or reports) and by
+        subject identity, not query similarity: under the lightweight production
+        embedder "invest in Acme?" is closer to "invest in Zeta?" than to "Acme
+        pricing?", so similarity recall injected the wrong company's report."""
+        if not owner or not subject:
+            return []
+        from ..rag.entity import normalize_name
+
+        want = normalize_name(subject)
+        rows = [self._row(r) for r in self._store.by_owner(owner, 50)]
+        return [e for e in rows if normalize_name(e.target) == want][:limit]
 
     # ---- read: relevance (vectors) ----
     def relevant(self, query: str, limit: int = 3) -> list[Episode]:

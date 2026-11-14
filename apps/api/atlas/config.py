@@ -11,6 +11,7 @@ project that happens to share this repository root.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,13 +50,21 @@ class Settings(BaseSettings):
     # ---- Human review ----
     max_revisions: int = 3  # cap the human-feedback → regenerate loop
 
+    # ---- Learning loop ----
+    # Release a replay-validated policy change without an admin reading it first.
+    # Off: lessons are prompt text that reaches every user, so a human approves them.
+    llmops_auto_release: bool = False
+
     # ---- Persistence ----
     # Postgres for durable checkpoints / episodic memory / learning loop. Empty →
     # local SQLite (fine for dev/tests; ephemeral on hosts like Render's free tier).
     database_url: str = ""
 
     # ---- Memory ----
-    memory_consolidate_every: int = 3  # run the summarizer after every N episodes
+    # Run the summarizer after every N episodes. 0 = off (default): consolidated facts
+    # land in the SHARED retrieval index, i.e. in every tenant's evidence. Enable only
+    # for a single-tenant / self-hosted deployment.
+    memory_consolidate_every: int = 0
 
     # ---- Observability (Langfuse) ----
     langfuse_public_key: str = ""
@@ -73,6 +82,43 @@ class Settings(BaseSettings):
     # ---- External tools ----
     tavily_api_key: str = ""
     sec_edgar_user_agent: str = "atlas-research you@example.com"
+
+    # ---- Auth ----
+    # HS256 signing key for access tokens (>= 32 chars). Unset → a random key is
+    # generated once and kept in the database, so every instance signs with the same
+    # key and tokens survive restarts. Set it explicitly in production anyway.
+    auth_jwt_secret: str = ""
+    # The previous key, accepted for verification only — lets you rotate the secret
+    # without signing everyone out.
+    auth_jwt_secret_previous: str = ""
+    auth_access_ttl_s: int = 900          # 15 min: short, so a leaked token dies fast
+    auth_refresh_ttl_days: int = 30
+    auth_guest_ttl_hours: int = 24
+    # Comma-separated emails that get the admin role (learning-loop + corpus writes).
+    auth_admin_emails: str = ""
+    auth_allow_signup: bool = True
+    auth_allow_guest: bool = True
+
+    # ---- Encryption at rest (application level, see security/crypto.py) ----
+    # 32 random bytes, urlsafe-base64 (`python -m atlas.security.crypto`). Required in
+    # production; dev falls back to a key file under data/cache.
+    data_encryption_key: str = ""
+    data_encryption_key_id: str = "k1"
+    # Retired keys kept for decryption during a rotation: "k0:<key>,k-1:<key>".
+    data_encryption_keys_previous: str = ""
+
+    # ---- Scale-out: shared coordination + admission control ----
+    # Redis (e.g. Render Key Value / Upstash) for rate limits and leases shared by
+    # every instance. Unset → Postgres (DATABASE_URL), else in-process memory.
+    redis_url: str = ""
+    rate_limits_enabled: bool = True
+    # Research runs this process will stream at once. Each run holds a worker thread
+    # and fires parallel LLM calls; beyond this the instance answers 503 + Retry-After
+    # so a load balancer / the client sends the user elsewhere or later.
+    max_concurrent_runs: int = 4
+    # LLM calls in flight per process (bulkhead): bursts queue here instead of
+    # becoming a storm of 429s from the provider.
+    max_concurrent_llm_calls: int = 6
 
     # ---- App ----
     app_env: str = "development"
@@ -93,6 +139,17 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.auth_admin_emails.split(",")
+                         if e.strip())
+
+    @property
+    def is_production(self) -> bool:
+        # Render sets RENDER=true on every service: a deploy there is production even
+        # if APP_ENV was never configured, so security checks can't be skipped by omission.
+        return self.app_env.lower() in {"production", "prod"} or bool(os.getenv("RENDER"))
 
 
 @lru_cache
