@@ -41,6 +41,8 @@ dependencies = [
     "argon2-cffi>=23.1",        # Argon2id password hashing (OWASP first choice)
     "email-validator>=2.1",     # pydantic EmailStr
     "redis>=5.0",               # shared rate limits / leases across instances
+    "cryptography>=42",         # AES-256-GCM encryption at rest (security/crypto.py)
+    "beautifulsoup4>=4.12",     # company website reader (core/tools/website.py)
 
     # --- observability ---
     "langfuse>=2.50,<3",
