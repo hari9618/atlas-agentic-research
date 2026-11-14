@@ -1,5 +1,7 @@
 # Atlas local stack — bring up with: cp .env.example .env && docker compose up
-# Free / self-hostable components only: Qdrant + Postgres + self-hosted Langfuse + api + web.
+# Free / self-hostable components only: Qdrant + Postgres + Redis + self-hosted Langfuse
+# + nginx load balancer + N api replicas + web.
+#   docker compose up -d --scale api=3     # three API replicas behind the balancer
 name: atlas
 
 services:
@@ -73,11 +75,25 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ---- Atlas API (FastAPI) ---------------------------------------------
+  # ---- Redis (shared rate limits + run leases across API replicas) -------
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb",
+              "--maxmemory-policy", "volatile-ttl"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ---- Atlas API (FastAPI) — stateless, scale with `--scale api=3` ------
+  # No host port: every request enters through the load balancer below, so adding
+  # replicas never collides on a port and every replica gets traffic.
   api:
     build: ./apps/api
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
       - ./apps/api/.env
     environment:
@@ -85,6 +101,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       LANGFUSE_HOST: http://langfuse:3000
       DATABASE_URL: postgresql://atlas:atlas_dev_pw@postgres:5432/atlas
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./apps/api:/app          # dev hot-reload
     depends_on:
@@ -92,7 +109,27 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    command: uvicorn atlas.main:app --host 0.0.0.0 --port 8000 --reload
+      redis:
+        condition: service_healthy
+    command: uvicorn atlas.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
+    restart: unless-stopped
+
+  # ---- Load balancer (nginx) — the API's front door on :8000 ------------
+  # least_conn across replicas, SSE-safe proxying, edge rate limit, failover on a
+  # full (503) or dead replica. Config: infra/nginx/nginx.conf
+  lb:
+    image: nginx:1.27-alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/lb-health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   # ---- Web (Next.js war-room) ------------------------------------------
@@ -103,9 +140,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000      # what the browser calls (the lb)
+      ATLAS_API_INTERNAL_URL: http://lb               # what the BFF calls, in-network
     depends_on:
-      - api
+      - lb
     restart: unless-stopped
 
 volumes:

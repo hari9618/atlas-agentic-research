@@ -10,7 +10,9 @@ services:
     # Install the package (and its deps) from apps/api/pyproject.toml.
     buildCommand: pip install --upgrade pip && pip install -e .
     # Render provides $PORT; bind to it and to all interfaces.
-    startCommand: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT
+    # --proxy-headers: Render's load balancer forwards the client IP in
+    # X-Forwarded-For; per-IP rate limits and the audit log need the real one.
+    startCommand: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 30
     healthCheckPath: /health/ready
     # Deploys are driven by GitHub Actions (.github/workflows/deploy.yml): after CI is
     # green it calls this service's deploy hook for the exact commit, then smoke-tests
@@ -50,6 +52,26 @@ services:
       # neural pipeline still runs locally / on a larger instance (flag off).
       - key: ATLAS_OFFLINE_EMBED
         value: "1"
+      # ---- Security (required) ----
+      # Encryption at rest. The API REFUSES TO START in production without it.
+      # Generate locally: `python -m atlas.security.crypto`, paste in the dashboard.
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: DATA_ENCRYPTION_KEY_ID
+        value: "k1"
+      # Access-token signing key (>= 32 random chars).
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      # Who gets the admin role (experiments, corpus edits, audit log).
+      - key: AUTH_ADMIN_EMAILS
+        sync: false
+      - key: APP_ENV
+        value: production
+      # ---- Scale-out (optional) ----
+      # Shared rate limits / leases when running more than one instance (Render
+      # Key Value has a free plan). Unset → Postgres is used for the same purpose.
+      - key: REDIS_URL
+        sync: false
       # SEC EDGAR asks for a contact string in the User-Agent header.
       - key: SEC_EDGAR_USER_AGENT
         value: "atlas-research harithota609@gmail.com"
