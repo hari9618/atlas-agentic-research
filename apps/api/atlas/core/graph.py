@@ -106,6 +106,7 @@ def _run_config(thread_id: str, query: str, *, resume: bool = False) -> dict:
         "run_name": "atlas_research_run",
         "metadata": {
             "langfuse_session_id": thread_id,
+            "langfuse_trace_name": "atlas_research_run",
             "langfuse_tags": ["atlas", "research_run"] + (["resume"] if resume else []),
             "atlas_query": query,
         },

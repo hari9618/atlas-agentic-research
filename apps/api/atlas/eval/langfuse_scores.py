@@ -1,12 +1,10 @@
-"""Push evaluation metrics into Langfuse as scores.
+"""Push evaluation metrics into Langfuse as scores (Langfuse SDK v5).
 
-Mirrors the score schema already used on the Langfuse dashboard so Atlas metrics
-land under **Scores** alongside everything else:
+Each eval item becomes its own small trace (one "evaluator" observation holding the
+question and answer) and its scores attach to that trace, so every score links to
+something inspectable. Run scores use the plain names in ``core/llmops/metrics.py``
+("Faithfulness", "Context recall", ...) with a one-line comment explaining the value.
 
-    ragas_faithfulness        ragas_answer_relevancy      ragas_context_precision
-    ragas_hallucination (= 1 - faithfulness)              ragas_alert_count
-
-Each eval item becomes its own trace so the scores attach to something inspectable.
 Everything is best-effort: if Langfuse isn't configured the functions no-op and the
 eval still prints its table.
 """
@@ -16,8 +14,6 @@ from __future__ import annotations
 import contextlib
 import logging
 from typing import Any
-
-from ..config import get_settings
 
 log = logging.getLogger("atlas.eval.langfuse")
 
@@ -30,21 +26,13 @@ ALERT_THRESHOLDS = {
 
 
 def _client() -> Any | None:
-    settings = get_settings()
-    if not settings.langfuse_configured:
-        log.info("Langfuse not configured — skipping score push.")
-        return None
-    try:
-        from langfuse import Langfuse
+    """The shared Langfuse client (``atlas.observability``), or None."""
+    from ..observability import get_langfuse_client
 
-        return Langfuse(
-            public_key=settings.langfuse_public_key,
-            secret_key=settings.langfuse_secret_key,
-            host=settings.langfuse_host,
-        )
-    except Exception as exc:  # pragma: no cover - defensive
-        log.warning("Could not init Langfuse client: %s", exc)
-        return None
+    client = get_langfuse_client()
+    if client is None:
+        log.info("Langfuse not configured — skipping score push.")
+    return client
 
 
 def derive_scores(metrics: dict[str, float]) -> dict[str, float]:
@@ -77,27 +65,23 @@ def push_item_scores(
     scores = derive_scores(metrics)
     notes = comments or {}
     try:
-        trace = client.trace(name=trace_name, input=question, output=answer)
+        trace_id = client.create_trace_id()
+        # A one-observation trace carries the question/answer the scores refer to.
+        with client.start_as_current_observation(
+                trace_context={"trace_id": trace_id}, name=trace_name, as_type="evaluator",
+                input=question, output=answer):
+            pass
         for name, value in scores.items():
-            if isinstance(value, str):  # categorical (e.g. Verdict = Good/Ok/Poor)
-                trace.score(name=name, value=value, data_type="CATEGORICAL",
-                            comment=notes.get(name))
-            else:
-                trace.score(name=name, value=float(value), comment=notes.get(name))
-        return getattr(trace, "id", None)
-    except Exception as exc:  # pragma: no cover - SDK version drift
-        # Fall back to the flat score API (older/newer SDKs).
-        try:
-            for name, value in scores.items():
-                if isinstance(value, str):
-                    client.score(name=name, value=value, data_type="CATEGORICAL",
-                                 comment=notes.get(name))
-                else:
-                    client.score(name=name, value=float(value), comment=notes.get(name))
-            return None
-        except Exception:
-            log.warning("Failed to push scores to Langfuse: %s", exc)
-            return None
+            categorical = isinstance(value, str)  # e.g. a good/ok/poor label
+            client.create_score(
+                trace_id=trace_id, name=name,
+                value=value if categorical else float(value),
+                data_type="CATEGORICAL" if categorical else "NUMERIC",
+                comment=notes.get(name))
+        return trace_id
+    except Exception as exc:  # never let observability break an evaluation
+        log.warning("Failed to push scores to Langfuse: %s", exc)
+        return None
 
 
 def flush() -> None:
