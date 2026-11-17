@@ -17,31 +17,31 @@ GOOD, OK = 0.70, 0.40
 @dataclass(frozen=True)
 class Metric:
     key: str          # key in the run record's scores
-    name: str         # human-readable name (Langfuse score name, UI title)
+    name: str         # exactly what people see: Langfuse score name and the table row
     question: str     # the question the score answers
     meaning: str      # what the number is, with {pct} for the value as a percentage
 
 
 METRICS: tuple[Metric, ...] = (
-    Metric("relevancy", "Answer relevancy (0-1)",
+    Metric("relevancy", "Answer relevancy",
            "Does the report actually answer the question?",
            "A judge rated how directly the report answers the question: {pct}."),
-    Metric("faithfulness", "Faithfulness (0-1)",
+    Metric("faithfulness", "Faithfulness",
            "Is what the report says backed by the evidence?",
            "{pct} of the report's statements are supported by the evidence found."),
-    Metric("context_precision", "Context precision (0-1)",
+    Metric("context_precision", "Context precision",
            "Was the evidence the agents used on-topic?",
            "{pct} of the evidence the agents used was relevant to the question."),
-    Metric("context_recall", "Context recall (0-1)",
+    Metric("context_recall", "Context recall",
            "Did the agents find everything the question needs?",
            "Evidence was found for {pct} of the things needed to answer the question."),
-    Metric("citation_accuracy", "Citation accuracy (0-1)",
+    Metric("citation_accuracy", "Citation accuracy",
            "Do the citations really say what the report claims?",
            "{pct} of cited statements are supported by their own source."),
-    Metric("citation_coverage", "Citation coverage (0-1)",
+    Metric("citation_coverage", "Citation coverage",
            "Does every statement have a source?",
            "{pct} of the report's statements carry a citation."),
-    Metric("overall", "Overall score (0-1)",
+    Metric("overall", "Overall",
            "One number for the run.",
            "Average of answer relevancy, faithfulness and context precision: {pct}."),
 )
@@ -76,7 +76,7 @@ def explain(key: str, value: float | None) -> str:
 def describe(means: dict[str, float | None]) -> list[dict]:
     """The Learning page panel: every score with its average and a plain reading."""
     return [{
-        "key": m.key, "name": m.name.replace(" (0-1)", ""), "question": m.question,
+        "key": m.key, "name": m.name, "question": m.question,
         "mean": means.get(m.key), "rating": rating(means.get(m.key)),
         "meaning": explain(m.key, means.get(m.key)),
     } for m in METRICS]

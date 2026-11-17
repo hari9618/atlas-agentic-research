@@ -241,15 +241,12 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
             from ...eval.langfuse_scores import flush, push_item_scores
             from .metrics import METRICS, explain
 
-            # Human-readable: every score is named with its range ("Faithfulness
-            # (0-1)") and carries a one-line comment saying what this value means,
-            # e.g. "0.48 out of 1 · OK. 48% of the evidence ... Good is 0.70 or more."
+            # Exactly the seven scores people read, by plain name ("Faithfulness"),
+            # each with a one-line comment saying what this value means, e.g.
+            # "0.48 out of 1 · OK. 48% of the evidence ... Good is 0.70 or more."
             # The old ragas_* names were opaque to anyone reading the dashboard.
             values = {m.name: scores[m.key] for m in METRICS}
             comments = {m.name: explain(m.key, scores[m.key]) for m in METRICS}
-            values["Verdict"] = quality.capitalize()  # categorical: Good / Ok / Poor
-            comments["Verdict"] = ("Plain-English verdict for the run: Good, Ok or Poor "
-                                   "(overall and faithfulness both 0.70+ is Good).")
             push_item_scores(values, question=query, answer=report[:500],
                              trace_name="atlas_ops_eval", comments=comments)
             flush()

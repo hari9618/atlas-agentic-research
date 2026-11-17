@@ -400,7 +400,7 @@ export function LearningDashboard() {
               <SectionHead
                 id="scores-title"
                 title="How good are the reports?"
-                text="Every run is scored automatically. Each score is out of 1, and higher is better: 0.70 or more is good, below 0.40 is weak. Averages over recent runs."
+                text="Every score is out of 1, and higher is better. Good: 0.70 or more · OK: 0.40 to 0.69 · Weak: below 0.40. Averages over recent runs; hover a row to see what it measures."
               />
               <ScorePanel metrics={data.runs.metrics} />
             </section>
@@ -568,42 +568,46 @@ function Stats({ data }: { data: LlmOpsOverview }) {
   );
 }
 
-const RATING_TONE: Record<string, { bar: string; badge: string }> = {
-  Good: { bar: "bg-emerald-500", badge: "border-emerald-300/70 text-emerald-800" },
-  OK: { bar: "bg-amber-500", badge: "border-amber-300/70 text-amber-800" },
-  Weak: { bar: "bg-rose-500", badge: "border-rose-300/70 text-rose-800" },
+const RATING_TONE: Record<string, string> = {
+  Good: "text-emerald-700",
+  OK: "text-amber-700",
+  Weak: "text-rose-700",
 };
 
-/** Each score as "0.82 / 1", a bar, a Good/OK/Weak badge and one plain sentence. */
+/** Score | Average | Rating — one row per score, nothing else. Hover a row for what
+ *  the number means. Every score is out of 1; the bands are the same for all. */
 function ScorePanel({ metrics }: { metrics: RunMetric[] }) {
   return (
-    <ul className="grid gap-px overflow-hidden rounded-xl bg-slate-200/80 ring-1 ring-slate-200/80 md:grid-cols-2">
-      {metrics.map((m) => {
-        const tone = RATING_TONE[m.rating];
-        const pctWidth = m.mean == null ? 0 : Math.round(Math.max(0, Math.min(1, m.mean)) * 100);
-        return (
-          <li key={m.key} className="min-w-0 bg-surface p-4 sm:p-5">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-950">{m.name}</p>
-              <span className={cx("shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium", tone?.badge ?? "border-slate-300 text-slate-600")}>
-                {m.rating}
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500">{m.question}</p>
-            <div className="mt-3 flex items-center gap-3">
-              <span className="font-mono text-xl font-semibold tracking-tight text-slate-950 tabular-nums">
-                {m.mean == null ? "–" : m.mean.toFixed(2)}
-                <span className="text-sm font-normal text-slate-500"> / 1</span>
-              </span>
-              <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200" aria-hidden>
-                <span className={cx("block h-full rounded-full", tone?.bar ?? "bg-slate-400")} style={{ width: `${pctWidth}%` }} />
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-600">{m.meaning}</p>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="overflow-hidden rounded-xl ring-1 ring-slate-200/80">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-left">
+          <tr className="text-xs font-medium text-slate-500">
+            <th scope="col" className="px-4 py-3 font-medium sm:px-5">Score</th>
+            <th scope="col" className="px-4 py-3 text-right font-medium sm:px-5">Average</th>
+            <th scope="col" className="px-4 py-3 font-medium sm:px-5">Rating</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200/80 bg-surface">
+          {metrics.map((m) => {
+            const empty = m.mean == null;
+            const last = m.key === "overall";
+            return (
+              <tr key={m.key} title={`${m.question} ${m.meaning}`} className={cx(last && "bg-slate-50/60")}>
+                <th scope="row" className={cx("px-4 py-3 text-left text-slate-900 sm:px-5", last ? "font-semibold" : "font-normal")}>
+                  {m.name}
+                </th>
+                <td className={cx("px-4 py-3 text-right font-mono tabular-nums text-slate-950 sm:px-5", last && "font-semibold")}>
+                  {empty ? "—" : (m.mean as number).toFixed(2)}
+                </td>
+                <td className={cx("px-4 py-3 sm:px-5", empty ? "text-slate-500 italic" : cx("font-medium", RATING_TONE[m.rating] ?? "text-slate-700"))}>
+                  {empty ? "appears after your next run" : m.rating}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

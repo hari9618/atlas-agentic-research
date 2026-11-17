@@ -23,9 +23,10 @@ def test_explanation_says_out_of_one_and_what_good_is():
     assert "48% of the evidence" in text and "Good is 0.70 or more" in text
 
 
-def test_every_score_has_a_readable_name_with_its_range():
-    names = [m.name for m in METRICS]
-    assert all(n.endswith("(0-1)") and not n.startswith("ragas_") for n in names)
+def test_exactly_the_seven_readable_scores():
+    assert [m.name for m in METRICS] == [
+        "Answer relevancy", "Faithfulness", "Context precision", "Context recall",
+        "Citation accuracy", "Citation coverage", "Overall"]
     assert {"relevancy", "context_recall", "context_precision", "faithfulness"} <= {
         m.key for m in METRICS}
 
@@ -59,7 +60,5 @@ def test_run_scores_include_context_recall_and_push_readable_names(monkeypatch):
                           {"report": "Gong has transcription complaints [Reviews (reviews#1)].",
                            "findings": findings}, push=True)
     assert 0.0 <= scores["context_recall"] <= 1.0
-    assert "Answer relevancy (0-1)" in sent["values"]
-    assert "Context recall (0-1)" in sent["values"]
-    assert sent["values"]["Verdict"] in {"Good", "Ok", "Poor"}
-    assert sent["comments"]["Context recall (0-1)"].split(" · ")[0].endswith("out of 1")
+    assert list(sent["values"]) == [m.name for m in METRICS]  # nothing else is sent
+    assert sent["comments"]["Context recall"].split(" · ")[0].endswith("out of 1")
