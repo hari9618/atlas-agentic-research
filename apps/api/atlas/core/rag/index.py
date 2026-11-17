@@ -19,7 +19,6 @@ import os
 import re
 from pathlib import Path
 
-from langchain.retrievers import ContextualCompressionRetriever, EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document as LCDocument
 from langchain_core.embeddings import Embeddings
@@ -118,6 +117,12 @@ class HybridIndex:
         return self._vectorstore, self._bm25
 
     def _build_retriever(self, top_k: int, candidate_k: int, rerank: bool):
+        # Imported here, not at module load: the `langchain.retrievers` package imports
+        # every retriever it ships (one pulls in transformers), which made the API's
+        # cold start wait seconds on code no request needs until research begins.
+        # main.warm_up() loads it in the background right after startup.
+        from langchain.retrievers import ContextualCompressionRetriever, EnsembleRetriever
+
         vectorstore, bm25 = self._ensure_backends()
         vector_retriever = vectorstore.as_retriever(search_kwargs={"k": candidate_k})
         bm25.k = candidate_k  # cheap per-call tweak; the index itself is cached

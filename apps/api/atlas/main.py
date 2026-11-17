@@ -9,6 +9,8 @@ spin up in tests and under uvicorn alike.
 from __future__ import annotations
 
 import logging
+import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +54,31 @@ def _check_security_config(settings) -> None:
     log.info("Security: encryption keyring=%s (active key %s)", ring.source, ring.active.kid)
 
 
+def warm_up() -> None:
+    """Load the retrieval stack in the background once the server is up.
+
+    Startup only imports what answering a request needs, so a sleeping free-tier
+    instance can serve sign-ups as soon as it boots; the heavier retrieval imports
+    then load here instead of inside the first research run.
+    """
+    log = logging.getLogger("atlas.main")
+
+    def _load() -> None:
+        try:
+            import langchain.retrievers  # noqa: F401
+            log.info("warm-up: retrieval stack loaded")
+        except Exception as exc:  # never let warm-up take the server down
+            log.warning("warm-up skipped: %s", exc)
+
+    threading.Thread(target=_load, name="atlas-warm-up", daemon=True).start()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    warm_up()
+    yield
+
+
 def create_app() -> FastAPI:
     """Build and configure the FastAPI app. Importable from tests and uvicorn."""
     settings = get_settings()
@@ -66,6 +93,7 @@ def create_app() -> FastAPI:
             "(bull vs bear), ground claims in retrieved evidence, and produce an "
             "investor-grade cited report with a confidence score."
         ),
+        lifespan=_lifespan,
     )
 
     install_error_handlers(app)

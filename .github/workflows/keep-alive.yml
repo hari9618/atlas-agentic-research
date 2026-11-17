@@ -1,0 +1,34 @@
+name: Atlas keep-alive
+
+# Render's free instance sleeps after 15 idle minutes, and the next visitor then waits
+# for a cold boot (seen as a sign-up "stuck" for a minute or more). A ping every 10
+# minutes keeps it awake. One always-on free service fits Render's 750 free
+# instance-hours a month. GitHub may delay scheduled runs at busy times, so the web
+# app also wakes the API as soon as someone opens the site (components/WakeApi.tsx).
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping the API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET /health (retries through a cold boot)
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -m 60 -w "%{http_code}" https://atlas-api-kpiq.onrender.com/health || true)
+            echo "attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::API did not answer 200 after 6 attempts"

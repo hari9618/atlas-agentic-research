@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type KeyboardEvent, useId, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { type AuthError, continueAsGuest, signIn, signOut, signUp } from "@/lib/auth";
 import { isGuest } from "@/lib/auth-common";
+import { ensureAwake } from "@/lib/http";
 import { useSession } from "@/lib/use-session";
 import { Icon } from "@/components/ui/Icon";
 import { Spinner } from "@/components/ui/Spinner";
@@ -66,6 +67,11 @@ export function AuthPanel({ next, initialMode }: { next: string; initialMode: Au
   const [error, setError] = useState<AuthError | null>(null);
   const [busy, setBusy] = useState<null | "form" | "guest">(null);
   const [slow, setSlow] = useState(false);
+
+  // Wake a napping API while the visitor types, so submitting rarely waits on a boot.
+  useEffect(() => {
+    void ensureAwake();
+  }, []);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
