@@ -9,6 +9,7 @@ confidence. Pure functions only — no I/O, trivially testable.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 NOT_ENOUGH = "Not enough evidence yet."
@@ -102,7 +103,8 @@ def _cite(item: dict) -> str:
 
 
 _PLACEHOLDERS = {"not enough evidence yet", "not enough evidence", "n/a", "na", "none",
-                 "unknown", "-", "tbd", "not available"}
+                 "unknown", "-", "tbd", "not available", "not specified", "unspecified",
+                 "not stated", "not reported"}
 
 
 def _placeholder(text: str) -> bool:
@@ -128,6 +130,38 @@ def _metric(m: dict) -> dict | None:
         return None
     return {"label": label, "value": value, "change": _optional(m.get("change")),
             "citation": _cite(m)}
+
+
+# A citation at the end of a value, e.g. " [Gong pricing (web_search#12) [web]]" — the
+# trust marker nests a second bracket pair inside the first.
+_TRAILING_CITE = re.compile(r"\s*(\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\])\s*\.?\s*$")
+
+
+def _snapshot(value: Any) -> list[dict]:
+    """Quick facts, one record per fact.
+
+    The model once copied the prompt's label template ("Founded | HQ | Team size")
+    and packed every fact into one value ("Team size: 1,500; Customers: 5,000+ [src]"),
+    which rendered as a single unreadable row. Such a blob is split back into facts,
+    each carrying the citation.
+    """
+    out: list[dict] = []
+    for rec in _records(value, _metric):
+        packed = "|" in rec["label"] or rec["value"].count(":") >= 2
+        if not packed:
+            out.append(rec)
+            continue
+        text, cite = rec["value"], rec["citation"]
+        m = _TRAILING_CITE.search(text)
+        if m:  # keep the bracketed label as-is: it is what citation chips parse
+            cite = cite or m.group(1)
+            text = text[: m.start()]
+        for part in re.split(r"[;\n]", text):
+            label, sep, val = part.partition(":")
+            label, val = label.strip(" -*"), val.strip(" .")
+            if sep and label and val and "|" not in label and not _placeholder(val):
+                out.append({"label": label[:40], "value": val, "change": "", "citation": cite})
+    return out[:_MAX_ITEMS]
 
 
 def _competitor(c: dict) -> dict | None:
@@ -218,7 +252,7 @@ def normalize_sections(raw: Any, *, company: str = "") -> dict | None:
         "verdict": {"answer": _str(verdict.get("answer")),
                     "recommendation": _str(verdict.get("recommendation"))[:120]},
         "executive_summary": _str_list(raw.get("executive_summary")),
-        "snapshot": _records(raw.get("snapshot"), _metric),
+        "snapshot": _snapshot(raw.get("snapshot")),
         "strengths": strengths,
         "weaknesses": weaknesses,
         "pricing": {"summary": _str(pricing.get("summary")),

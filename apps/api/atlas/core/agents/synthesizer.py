@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from ...config import get_settings
 from ..guardrails import apply_grounding_guardrail
@@ -43,8 +44,8 @@ _SCHEMA = """{
                                  monitor', 'Pass for now', 'Good fit, check support'"},
   "bottom_line": "2-3 sentences a reader can act on",
   "executive_summary": ["3-5 bullets: the findings that matter most, each cited"],
-  "snapshot": [{"label": "Founded | HQ | Team size | Funding | Starting price | Customers",
-                "value": "...", "citation": "[label]"}],
+  "snapshot": [{"label": "Team size", "value": "about 1,500 employees", "citation": "[label]"},
+               {"label": "Starting price", "value": "...", "citation": "[label]"}],
   "strengths": ["what they genuinely do well, cited"],
   "weaknesses": ["negatives: complaints, gaps, red flags, cited"],
   "pricing": {"summary": "how they charge, in plain words",
@@ -122,6 +123,8 @@ _RULES = (
     "- Never guess revenue, headcount or prices; a missing figure goes in uncertainties.\n"
     "- custom_answers: one item per specific ask in the brief ([] if none); if the "
     "evidence can't answer it, say so in the answer.\n"
+    "- snapshot: one object per fact (label = one of Founded, HQ, Team size, Funding, "
+    "Starting price, Customers); leave out facts the findings don't give.\n"
     "- head_to_head: only when the asker's own company is known; otherwise "
     "{\"asker\": \"\", \"rows\": []}.\n"
     "- Return ONLY the JSON object — no prose, no markdown fences."
@@ -165,8 +168,10 @@ def _revision_block(state: ResearchState) -> str:
         f'"{feedback}"\n'
         "Address this feedback specifically: expand or correct the sections it concerns "
         "using the findings (follow-up findings gathered for this feedback are tagged "
-        "(reviewer_followup)). Keep the parts of the previous draft that were good. If the "
-        "evidence cannot satisfy the request, say so in uncertainties.\n"
+        "(reviewer_followup)). Keep the parts of the previous draft that were good, and "
+        "keep answering every original ask in custom_answers (the feedback adds to them, "
+        "it does not replace them). If the evidence cannot satisfy the request, say so in "
+        "uncertainties.\n"
         f"PREVIOUS DRAFT:\n{prev_text}"
     )
 
@@ -393,8 +398,35 @@ def _with_brief(out: dict, state: ResearchState) -> dict:
     return out
 
 
+def _norm_q(q: str) -> str:
+    return re.sub(r"\W+", " ", (q or "").lower()).strip()
+
+
+def _keep_earlier_answers(out: dict, state: ResearchState) -> dict:
+    """On a revision, never drop an answer the previous draft gave.
+
+    Seen live: asked to add competitor pricing, the rewrite answered only the feedback
+    and the reader's original questions ("Should we buy?", "What does it cost for 20
+    reps?") vanished from "Your questions". New answers win for the same question;
+    earlier ones are kept otherwise, in their original order.
+    """
+    if not (state.get("revision") or 0):
+        return out
+    prev = (state.get("report_sections") or {}).get("custom_answers") or []
+    sections = out.get("report_sections")
+    if not prev or not isinstance(sections, dict):
+        return out
+    new = [a for a in sections.get("custom_answers") or [] if isinstance(a, dict)]
+    fresh = {_norm_q(a.get("question", "")): a for a in new}
+    merged = [fresh.pop(_norm_q(a.get("question", "")), a) for a in prev if isinstance(a, dict)]
+    merged += [a for a in new if _norm_q(a.get("question", "")) in fresh]
+    sections = {**sections, "custom_answers": merged}
+    return {**out, "report_sections": sections, "report": render_markdown(sections)}
+
+
 def synthesize_node(state: ResearchState) -> dict:
-    return _with_brief(synthesize_with(state, get_policies().active("synthesizer")), state)
+    out = synthesize_with(state, get_policies().active("synthesizer"))
+    return _with_brief(_keep_earlier_answers(out, state), state)
 
 
 def with_uncertainty(state: ResearchState, note: str) -> dict:

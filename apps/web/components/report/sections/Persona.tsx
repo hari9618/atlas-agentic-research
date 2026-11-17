@@ -4,6 +4,7 @@ import { personaLabel } from "@/lib/persona";
 import { Icon } from "@/components/ui/Icon";
 import { cx, monoLabel } from "@/components/ui/styles";
 import { CiteChips } from "../bits";
+import { Cited } from "../Cited";
 import { CitedOrMuted, Prose, Section, type Ctx } from "../Section";
 import { Ledger } from "./Market";
 
@@ -58,10 +59,17 @@ export function Snapshot({ s, c, n }: P) {
     <Section c={c} id="snapshot" n={n} title="Snapshot" description="Quick facts, each with its source.">
       <dl className="grid grid-cols-1 border-t border-slate-200/80 @md:grid-cols-2 @3xl:grid-cols-3">
         {list.map((f, i) => (
+          // The label may wrap and is capped at 45% of the row: a `shrink-0` label once
+          // took the whole width when the model sent an over-long one, squeezing the
+          // value into a one-character column that rendered as a vertical strip.
           <div key={i} className="flex min-w-0 items-baseline justify-between gap-4 border-b border-slate-200/80 py-3 @md:pr-6">
-            <dt className="shrink-0 text-sm text-slate-500">{f.label}</dt>
-            <dd className="min-w-0 text-right text-sm font-medium text-slate-900 [overflow-wrap:anywhere]">
-              {isPlaceholder(f.value) ? <span className="font-normal text-slate-500 italic">{f.value}</span> : f.value}
+            <dt className="max-w-[45%] text-sm text-slate-500 [overflow-wrap:break-word]">{f.label}</dt>
+            <dd className="min-w-0 flex-1 text-right text-sm font-medium text-slate-900 [overflow-wrap:break-word]">
+              {isPlaceholder(f.value) ? (
+                <span className="font-normal text-slate-500 italic">{f.value}</span>
+              ) : (
+                <Cited text={f.value} ns={c.ns} nums={c.nums} />
+              )}
               <CiteChips citation={extra(f.citation, f.value)} ns={c.ns} nums={c.nums} />
             </dd>
           </div>

@@ -201,3 +201,52 @@ def test_placeholder_date_is_blanked_not_rendered():
                       "detail": "Liability capped at fees paid.", "sentiment": "neutral"})
     assert d["date"] == ""
     assert d["title"] == "Terms of Service published"
+
+
+def test_packed_snapshot_is_split_into_facts():
+    """Seen live: the model copied the label template and packed every fact into one
+    value, which rendered as an unreadable vertical strip."""
+    from atlas.core.agents.report_schema import _snapshot
+    cite = "[Gong funding | Sacra (web_search#4366116) [web]]"
+    facts = _snapshot([{"label": "Founded | HQ | Team size | Funding | Starting price",
+                        "value": f"Team size: 1,500 employees; Customers: 5,000+; "
+                                 f"Funding: Not specified {cite}", "citation": ""}])
+    assert [(f["label"], f["value"]) for f in facts] == [("Team size", "1,500 employees"),
+                                                          ("Customers", "5,000+")]
+    assert all(f["citation"] == cite for f in facts)
+
+
+def test_plain_snapshot_facts_pass_through():
+    from atlas.core.agents.report_schema import _snapshot
+    facts = _snapshot([{"label": "Founded", "value": "2015", "citation": "[About (site#1)]"}])
+    assert facts == [{"label": "Founded", "value": "2015", "change": "",
+                      "citation": "[About (site#1)]"}]
+
+
+def test_filler_change_is_blanked():
+    from atlas.core.agents.report_schema import _metric
+    assert _metric({"label": "ARR", "value": "$500 million", "change": "Not specified"})[
+        "change"] == ""
+
+
+def test_revision_keeps_the_original_answers():
+    """Seen live: a revision answered only the feedback and dropped the reader's
+    original questions from "Your questions"."""
+    from atlas.core.agents.synthesizer import _keep_earlier_answers
+    prev = [{"question": "Should we buy from gong.io?", "answer": "Pilot first."},
+            {"question": "What does it cost for 20 reps?", "answer": "About $30-35k."}]
+    new = [{"question": "Compare with Clari", "answer": "Not public."},
+           {"question": "should we buy from Gong.io", "answer": "Pilot, then negotiate."}]
+    out = _keep_earlier_answers({"report_sections": {"custom_answers": new}, "report": ""},
+                                {"revision": 1, "report_sections": {"custom_answers": prev}})
+    got = [(a["question"], a["answer"]) for a in out["report_sections"]["custom_answers"]]
+    assert got == [("should we buy from Gong.io", "Pilot, then negotiate."),
+                   ("What does it cost for 20 reps?", "About $30-35k."),
+                   ("Compare with Clari", "Not public.")]
+    assert "About $30-35k." in out["report"]
+
+
+def test_first_draft_answers_are_untouched():
+    from atlas.core.agents.synthesizer import _keep_earlier_answers
+    out = {"report_sections": {"custom_answers": [{"question": "q", "answer": "a"}]}}
+    assert _keep_earlier_answers(out, {"revision": 0}) is out
