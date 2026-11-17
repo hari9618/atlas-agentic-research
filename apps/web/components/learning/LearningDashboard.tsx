@@ -12,6 +12,7 @@ import {
   rejectExperiment,
   type LlmOpsOverview,
   type RecentRun,
+  type RunMetric,
   rollbackComponent,
   runImprovementExperiment,
 } from "@/lib/api";
@@ -394,6 +395,17 @@ export function LearningDashboard() {
 
           <Stats data={data} />
 
+          {data.runs.metrics.some((m) => m.mean != null) && (
+            <section aria-labelledby="scores-title">
+              <SectionHead
+                id="scores-title"
+                title="How good are the reports?"
+                text="Every run is scored automatically. Each score is out of 1, and higher is better: 0.70 or more is good, below 0.40 is weak. Averages over recent runs."
+              />
+              <ScorePanel metrics={data.runs.metrics} />
+            </section>
+          )}
+
           <section aria-labelledby="components-title">
             <SectionHead
               id="components-title"
@@ -553,6 +565,45 @@ function Stats({ data }: { data: LlmOpsOverview }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+const RATING_TONE: Record<string, { bar: string; badge: string }> = {
+  Good: { bar: "bg-emerald-500", badge: "border-emerald-300/70 text-emerald-800" },
+  OK: { bar: "bg-amber-500", badge: "border-amber-300/70 text-amber-800" },
+  Weak: { bar: "bg-rose-500", badge: "border-rose-300/70 text-rose-800" },
+};
+
+/** Each score as "0.82 / 1", a bar, a Good/OK/Weak badge and one plain sentence. */
+function ScorePanel({ metrics }: { metrics: RunMetric[] }) {
+  return (
+    <ul className="grid gap-px overflow-hidden rounded-xl bg-slate-200/80 ring-1 ring-slate-200/80 md:grid-cols-2">
+      {metrics.map((m) => {
+        const tone = RATING_TONE[m.rating];
+        const pctWidth = m.mean == null ? 0 : Math.round(Math.max(0, Math.min(1, m.mean)) * 100);
+        return (
+          <li key={m.key} className="min-w-0 bg-surface p-4 sm:p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-950">{m.name}</p>
+              <span className={cx("shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium", tone?.badge ?? "border-slate-300 text-slate-600")}>
+                {m.rating}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500">{m.question}</p>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="font-mono text-xl font-semibold tracking-tight text-slate-950 tabular-nums">
+                {m.mean == null ? "–" : m.mean.toFixed(2)}
+                <span className="text-sm font-normal text-slate-500"> / 1</span>
+              </span>
+              <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200" aria-hidden>
+                <span className={cx("block h-full rounded-full", tone?.bar ?? "bg-slate-400")} style={{ width: `${pctWidth}%` }} />
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">{m.meaning}</p>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

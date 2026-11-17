@@ -64,28 +64,36 @@ def push_item_scores(
     question: str,
     answer: str,
     trace_name: str = "atlas_rag_eval",
+    comments: dict[str, str] | None = None,
 ) -> str | None:
-    """Create a trace for one eval item and attach its scores. Returns trace id or None."""
+    """Create a trace for one eval item and attach its scores. Returns trace id or None.
+
+    ``comments`` (score name → text) shows next to each score in Langfuse, so a reader
+    sees what a value means without knowing the metric.
+    """
     client = _client()
     if client is None:
         return None
     scores = derive_scores(metrics)
+    notes = comments or {}
     try:
         trace = client.trace(name=trace_name, input=question, output=answer)
         for name, value in scores.items():
-            if isinstance(value, str):  # categorical (e.g. quality = good/ok/poor)
-                trace.score(name=name, value=value, data_type="CATEGORICAL")
+            if isinstance(value, str):  # categorical (e.g. Verdict = Good/Ok/Poor)
+                trace.score(name=name, value=value, data_type="CATEGORICAL",
+                            comment=notes.get(name))
             else:
-                trace.score(name=name, value=float(value))
+                trace.score(name=name, value=float(value), comment=notes.get(name))
         return getattr(trace, "id", None)
     except Exception as exc:  # pragma: no cover - SDK version drift
         # Fall back to the flat score API (older/newer SDKs).
         try:
             for name, value in scores.items():
                 if isinstance(value, str):
-                    client.score(name=name, value=value, data_type="CATEGORICAL")
+                    client.score(name=name, value=value, data_type="CATEGORICAL",
+                                 comment=notes.get(name))
                 else:
-                    client.score(name=name, value=float(value))
+                    client.score(name=name, value=float(value), comment=notes.get(name))
             return None
         except Exception:
             log.warning("Failed to push scores to Langfuse: %s", exc)

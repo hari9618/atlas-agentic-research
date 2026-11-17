@@ -9,6 +9,9 @@ Scores every research run without a human, on the brief the reader actually sees
 * **relevancy**         — does the brief answer the question? (LLM judge with a rubric)
 * **context_precision** — share of the cited evidence that is on-topic for the question
                           (one batched relevance call over the distinct evidence chunks).
+* **context_recall**    — did the evidence cover everything the question needs?
+                          (reference-free: the judge lists what is needed, then
+                          marks what the evidence covers)
 * **overall**           — mean of faithfulness, relevancy and context precision; the
                           learning loop's live regression check reads it.
 
@@ -16,7 +19,7 @@ Earlier versions scored "faithfulness" as the share of findings' citations that
 appeared somewhere in the report. That is bookkeeping, not grounding: it read 1.0 on
 real reports regardless of whether their statements were true to the evidence. And
 one judge call per ambiguous claim could exhaust the free-tier rate limit; the whole
-evaluation is now at most three small-model calls.
+evaluation is now at most four small-model calls.
 
 Each judge degrades to a deterministic heuristic if the LLM is unavailable, so a
 transient error lowers precision, never zeroes a score.
@@ -139,6 +142,44 @@ def _judge_context_precision(query: str, findings: list[dict]) -> float:
     return round(sum(flags) / len(flags), 3)
 
 
+def _heuristic_recall(query: str, contexts: list[str]) -> float:
+    """Share of the question's key terms that appear somewhere in the evidence."""
+    qt = _query_terms(query)
+    found = set(_TOKEN.findall(" ".join(contexts).lower()))
+    return round(len(qt & found) / len(qt), 3) if qt else 0.0
+
+
+def _judge_context_recall(query: str, findings: list[dict]) -> float:
+    """Did the agents find evidence for everything the question needs? (0..1)
+
+    Ragas' context recall compares retrieval with a reference answer. Live runs have
+    no reference, so this is the reference-free form: the judge lists the pieces of
+    information the question needs (at most 6) and marks which ones the evidence
+    covers. One small-model call; a term-overlap heuristic if the judge is down.
+    """
+    contexts = _contexts(findings)
+    if not contexts:
+        return 0.0
+    if _llm_active():
+        blocks = "\n\n".join(f"#{i + 1}: {c[:400]}" for i, c in enumerate(contexts))
+        try:
+            reply = _judge(
+                "List the distinct pieces of information needed to fully answer the "
+                "question (at most 6). For each, say whether the EVIDENCE below contains "
+                'it. Return ONLY JSON: {"needed": ["..."], "covered": [true, false]}.\n\n'
+                f"Question: {query}\n\nEVIDENCE:\n{blocks}",
+                "ops.judge_context_recall",
+            )
+            data = json.loads(reply[reply.index("{"): reply.rindex("}") + 1])
+            covered = [v is True or str(v).lower() in ("true", "yes", "1")
+                       for v in data.get("covered") or []]
+            if covered:
+                return round(sum(covered) / len(covered), 3)
+        except Exception as exc:
+            log.warning("context-recall judge failed (%s) — using heuristic", exc)
+    return _heuristic_recall(query, contexts)
+
+
 def _quality_label(overall: float, faithfulness: float) -> str:
     """A plain-English verdict so a human can read the dashboard at a glance.
 
@@ -166,6 +207,9 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
     faithfulness = check["faithfulness"]
     relevancy = _judge_relevancy(query, report)
     context_precision = _judge_context_precision(query, findings)
+    context_recall = _judge_context_recall(query, findings)
+    # `overall` keeps its original definition: the learning loop's regression check
+    # and history are calibrated on it.
     overall = round((faithfulness + relevancy + context_precision) / 3, 3)
     quality = _quality_label(overall, faithfulness)
 
@@ -178,6 +222,7 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
         "faithfulness": faithfulness,
         "relevancy": relevancy,
         "context_precision": context_precision,
+        "context_recall": context_recall,
         "citation_accuracy": check["citation_accuracy"],
         "citation_coverage": check["citation_coverage"],
         "overall": overall,
@@ -194,23 +239,19 @@ def evaluate_run(query: str, result: dict, *, push: bool = True) -> dict:
     if push:
         try:
             from ...eval.langfuse_scores import flush, push_item_scores
+            from .metrics import METRICS, explain
 
-            # A small, readable set — all 0..1, higher is better — plus a plain-English
-            # `quality` verdict. The names keep the Ragas metric names the dashboard
-            # already uses; the values are Atlas's own Ragas-style computations.
-            push_item_scores(
-                {
-                    "ragas_faithfulness": faithfulness,
-                    "ragas_answer_relevancy": relevancy,
-                    "ragas_context_precision": context_precision,
-                    "citation_accuracy": check["citation_accuracy"],
-                    "citation_coverage": check["citation_coverage"],
-                    "quality": quality,  # categorical: good / ok / poor
-                },
-                question=query,
-                answer=report[:500],
-                trace_name="atlas_ops_eval",
-            )
+            # Human-readable: every score is named with its range ("Faithfulness
+            # (0-1)") and carries a one-line comment saying what this value means,
+            # e.g. "0.48 out of 1 · OK. 48% of the evidence ... Good is 0.70 or more."
+            # The old ragas_* names were opaque to anyone reading the dashboard.
+            values = {m.name: scores[m.key] for m in METRICS}
+            comments = {m.name: explain(m.key, scores[m.key]) for m in METRICS}
+            values["Verdict"] = quality.capitalize()  # categorical: Good / Ok / Poor
+            comments["Verdict"] = ("Plain-English verdict for the run: Good, Ok or Poor "
+                                   "(overall and faithfulness both 0.70+ is Good).")
+            push_item_scores(values, question=query, answer=report[:500],
+                             trace_name="atlas_ops_eval", comments=comments)
             flush()
         except Exception as exc:  # pragma: no cover - defensive
             log.warning("Could not push ops scores to Langfuse: %s", exc)

@@ -13,6 +13,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from .metrics import METRICS, describe
 from .store import DocumentStore, now_iso
 
 KEEP_RECORDS = 300
@@ -68,13 +69,23 @@ def build_record(values: Mapping, *, thread_id: str, scores: dict | None,
     }
     if scores:
         record["scores"] = {k: scores.get(k) for k in (
-            "faithfulness", "relevancy", "context_precision", "citation_accuracy",
-            "citation_coverage", "overall", "quality")}
+            "faithfulness", "relevancy", "context_precision", "context_recall",
+            "citation_accuracy", "citation_coverage", "overall", "quality")}
         record["agents"] = scores.get("agents") or {}
         check = scores.get("report_check") or {}
         record["report_check"] = {"unsupported": list(check.get("unsupported") or [])[:4],
                                   "miscited": list(check.get("miscited") or [])[:4]}
     return record
+
+
+def _means(records: list[dict]) -> dict[str, float | None]:
+    """Average of each score over the runs that have it (None when none do)."""
+    out: dict[str, float | None] = {}
+    for m in METRICS:
+        vals = [r["scores"][m.key] for r in records
+                if r.get("scores") and isinstance(r["scores"].get(m.key), (int, float))]
+        out[m.key] = round(mean(vals), 3) if vals else None
+    return out
 
 
 class RunRecords:
@@ -100,6 +111,9 @@ class RunRecords:
             "revision_requests": sum(
                 1 for r in records for h in r["review"]["history"] if h.get("action") == "revise"),
             "mean_overall": round(mean(overall), 3) if overall else None,
+            # Every score's average with a plain-English reading (llmops/metrics.py),
+            # for the "How good are the reports?" panel.
+            "metrics": describe(_means(records)),
             "recent": [{
                 "id": r["thread_id"], "created_at": r.get("created_at"), "query": r["query"],
                 "target": r.get("target", ""),

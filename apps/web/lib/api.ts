@@ -459,7 +459,18 @@ export type RunStats = {
   rejected: number;
   revision_requests: number;
   mean_overall: number | null;
+  /** Every run score's average with a plain-English reading (llmops/metrics.py). */
+  metrics: RunMetric[];
   recent: RecentRun[];
+};
+
+export type RunMetric = {
+  key: string;
+  name: string;
+  question: string;
+  mean: number | null;
+  rating: "Good" | "OK" | "Weak" | "No data" | string;
+  meaning: string;
 };
 
 export type FailurePattern = { component: string; kind: string; count: number; example: string };
@@ -521,6 +532,7 @@ function normalizeOverview(raw: Partial<LlmOpsOverview> | null): LlmOpsOverview 
       rejected: num(runs.rejected),
       revision_requests: num(runs.revision_requests),
       mean_overall: typeof runs.mean_overall === "number" ? runs.mean_overall : null,
+      metrics: arr<RunMetric>(runs.metrics),
       recent: arr<RecentRun>(runs.recent),
     },
     issues: arr<FailurePattern>(raw?.issues),
